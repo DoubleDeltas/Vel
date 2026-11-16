@@ -122,6 +122,6 @@ $D(\infty)$ 연산의 결과가 유한한 십진수로 정확히 표현되지 �
 
 ### 3.5. 배열
 배열 간 원소별 연산의 원소 해상도는 위 규칙을 원소 해상도에 적용해 정한다.
-$$ \mathrm{Array}(\vec d, \langle\mathbb K_1\rangle_A) \circ \mathrm{Array}(\vec d, \langle\mathbb K_2\rangle_B) : \mathrm{Array}(\vec d, \langle\mathbb K_1 \vee \mathbb K_2\rangle_{A \sqcup B}) $$
+$$ \mathrm{Array}(\mathbf d, \langle\mathbb K_1\rangle_A) \circ \mathrm{Array}(\mathbf d, \langle\mathbb K_2\rangle_B) : \mathrm{Array}(\mathbf d, \langle\mathbb K_1 \vee \mathbb K_2\rangle_{A \sqcup B}) $$
 
 [^1]: 엄밀히 수학적으로는 체(field)가 아니지만, VEL에서는 체로 취급한다. Boolean 체에서는 $+$ 연산을 OR로, $\cdot$ 연산을 AND로 적용한다. 

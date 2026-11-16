@@ -134,4 +134,9 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 ## 7. 작업 관례
 
 - 문서는 한국어로 작성하며, 사용자가 직접 수정한다. 편집 전에 항상 최신 내용을 다시 읽는다.
-- 커밋은 사용자가 요청할 때만 한다. 현재 브랜치는 `master`이고, 아직 커밋된 것이 없다(스테이지만 됨).
+- 수식 표기:
+  - 벡터 값은 `\mathbf`로 쓴다 (예: $\mathbf d$, $\mathbf v$). `\vec`, `\boldsymbol` 등은 쓰지 않는다.
+  - 타입 이름은 `\mathrm` (예: $\mathrm{Vec}$, $\mathrm{Real}$)
+  - 체 변수는 `\mathbb` (예: $\mathbb K$)
+- 줄바꿈은 LF로 고정한다(`.gitattributes`). 예외로 `*.bat`, `*.cmd`는 CRLF.
+- 커밋은 사용자가 요청할 때만 한다. 원격은 `origin` = https://github.com/DoubleDeltas/Vel.git, 작업 브랜치는 `master`.
