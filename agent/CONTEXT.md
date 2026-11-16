@@ -52,6 +52,17 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 패키지는 `packageName` 속성으로 지정한다. `-package` 인자는 Gradle 9에서 deprecated다.
 - **진행 상태**: 문법 검증과 오류 보고까지 동작한다. 타입 검사와 코드 생성은 아직 없다. 테스트는 core 24, processor 3, javac 4, ksp 4, kotlinc 5개이며 모두 통과한다.
 
+### 배포 (GitHub Packages)
+- 배포 대상 모듈: `vel-runtime`, `vel-core`, `vel-processor`, `vel-javac`, `vel-ksp`, `vel-kotlinc` (예제 모듈 제외). 좌표는 `com.doubledeltas:<모듈>:<버전>`
+- 저장소: `https://maven.pkg.github.com/DoubleDeltas/Vel`. 루트 `build.gradle`에서 `maven-publish`를 일괄 설정한다(소스·javadoc jar 포함).
+- 버전: 기본 `1.0-SNAPSHOT`, `-PvelVersion=...`로 덮어쓴다.
+- 배포는 GitHub Actions(`.github/workflows/publish.yml`)로 한다.
+  - Release 게시(태그 `v1.2.3`) → 버전 `1.2.3`
+  - 수동 실행(`gh workflow run publish.yml`) → `1.0-SNAPSHOT`
+  - 로컬 `gh` 토큰에는 `write:packages` 권한이 없으므로 로컬 배포는 하지 않는다.
+- 배포 전 점검: `./gradlew publishAllPublicationsToBuildRepoRepository` (결과는 `build/repo`)
+- **사용하는 쪽도 인증이 필요하다**: GitHub Packages의 Maven 저장소는 공개 패키지라도 읽을 때 `read:packages` 권한 토큰이 필요하다.
+
 ## 4. 문법 현황 (`vel-core/src/main/antlr/.../Vel.g4`)
 
 - **진입 규칙**: `program`(B 방식, 문장 여러 개)과 `singleExpression`(C 방식, 식 1개)

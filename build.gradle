@@ -3,11 +3,15 @@ plugins {
     id 'com.google.devtools.ksp' version '2.3.14' apply false
 }
 
+/** Modules published to GitHub Packages. Example modules are not published. */
+def publishedModules = ['vel-runtime', 'vel-core', 'vel-processor', 'vel-javac', 'vel-ksp', 'vel-kotlinc']
+
 subprojects {
     apply plugin: 'java-library'
 
     group = 'com.doubledeltas'
-    version = '1.0-SNAPSHOT'
+    // Override with -PvelVersion=1.2.3 (the publish workflow passes the release tag).
+    version = findProperty('velVersion') ?: '1.0-SNAPSHOT'
 
     repositories {
         mavenCentral()
@@ -31,5 +35,53 @@ subprojects {
 
     test {
         useJUnitPlatform()
+    }
+
+    if (project.name in publishedModules) {
+        apply plugin: 'maven-publish'
+
+        java {
+            withSourcesJar()
+            withJavadocJar()
+        }
+
+        // Generated ANTLR sources and records without doc comments would flood the build with doclint warnings.
+        tasks.withType(Javadoc).configureEach {
+            options.addStringOption('Xdoclint:none', '-quiet')
+        }
+
+        publishing {
+            publications {
+                maven(MavenPublication) {
+                    from components.java
+                    pom {
+                        name = project.name
+                        description = 'VEL (Vector Expression Language): vector and matrix expressions for Java and Kotlin'
+                        url = 'https://github.com/DoubleDeltas/Vel'
+                        scm {
+                            url = 'https://github.com/DoubleDeltas/Vel'
+                            connection = 'scm:git:https://github.com/DoubleDeltas/Vel.git'
+                        }
+                    }
+                }
+            }
+            repositories {
+                maven {
+                    name = 'GitHubPackages'
+                    url = uri('https://maven.pkg.github.com/DoubleDeltas/Vel')
+                    credentials {
+                        // Locally: gpr.user / gpr.key in ~/.gradle/gradle.properties (token with write:packages).
+                        // GitHub Actions: GITHUB_ACTOR / GITHUB_TOKEN.
+                        username = findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+                        password = findProperty('gpr.key') ?: System.getenv('GITHUB_TOKEN')
+                    }
+                }
+                // For checking the published artifacts without uploading: publishAllPublicationsToBuildRepoRepository
+                maven {
+                    name = 'BuildRepo'
+                    url = rootProject.layout.buildDirectory.dir('repo')
+                }
+            }
+        }
     }
 }
