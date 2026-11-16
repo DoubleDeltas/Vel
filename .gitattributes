@@ -1,0 +1,13 @@
+# Normalize all text files to LF, both in the repository and in the working tree,
+# regardless of each developer's core.autocrlf setting.
+* text=auto eol=lf
+
+# Windows batch scripts need CRLF to run reliably under cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.jar binary
+*.png binary
+*.jpg binary
+*.gif binary
