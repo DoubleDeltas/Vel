@@ -34,8 +34,20 @@ Java 타입 시스템 및 SDK에서 정의된 라이브러리와의 기본 매�
 | `java.math.BigInteger` | $\langle\mathrm{Real}\rangle_Z(\infty)$ |
 | `java.math.BigDecimal` | $\langle\mathrm{Real}\rangle_D(\infty)$ |
 
-$\langle\mathrm{Real}\rangle_D(\infty)$ 연산의 기본 정밀도 문맥은 `java.math.MathContext.DECIMAL128`(유효숫자 34자리, `HALF_EVEN`)이다.
-이후 `@VelConfig`로 바꿀 수 있게 한다.
+$\langle\mathrm{Real}\rangle_D(\infty)$의 정밀도 처리(VEL 타입 시스템 3.3절 "$D(\infty)$의 정밀도")는 다음과 같이 구체화한다.
+
+| 항목 | 기본값 |
+| --- | --- |
+| 최종 정밀도 문맥 | `java.math.MathContext.DECIMAL128` (유효숫자 34자리, `HALF_EVEN`) |
+| 작업 정밀도 | 최종 정밀도의 2배 자릿수, 같은 반올림 모드 (DECIMAL128 기준 68자리, `HALF_EVEN`) |
+
+- 두 값 모두 이후 `@VelConfig`로 바꿀 수 있게 한다.
+- 중간 연산의 $+$, $-$, $\times$는 `MathContext` 없이(`BigDecimal.add/subtract/multiply`) 정확하게 계산한다.
+- 나눗셈은 분자와 분모를 따로 유지한다.
+- 최종 결과는 다음 순서로 만든다.
+  1. 먼저 `p.divide(q)`로 정확한 나눗셈을 시도한다.
+  2. 나누어떨어지지 않아 `ArithmeticException`이 나면 `p.divide(q, mathContext)`로 반올림한다.
+  - 정확히 나누어떨어지는지는 분모의 소인수가 2와 5뿐인지로 미리 판정할 수도 있다.
 
 ## 2. 시퀀스
 이 문단에서 "시퀀스"는 다음 중 하나를 말하며, `a[]`로 표기한다.

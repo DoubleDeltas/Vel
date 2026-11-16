@@ -68,6 +68,79 @@ class VelFrontendTest {
                 tree("-v'"));
     }
 
+    @Test
+    void plainTransposeIsDotTick() {
+        assertEquals("(singleExpression (expr (expr (primary v)) .') <EOF>)", tree("v.'"));
+        // number followed by .' is a transpose, not a decimal point
+        assertEquals("(singleExpression (expr (expr (primary 2)) .') <EOF>)", tree("2.'"));
+        // a.'' == (a.')'
+        assertEquals("(singleExpression (expr (expr (expr (primary a)) .') ') <EOF>)", tree("a.''"));
+    }
+
+    @Test
+    void elementWiseOperatorsShareMatrixOperatorPrecedence() {
+        // a .* b + c ./ d  ==  (a .* b) + (c ./ d)
+        assertEquals("(singleExpression (expr (expr (expr (primary a)) .* (expr (primary b))) + (expr (expr (primary c)) ./ (expr (primary d)))) <EOF>)",
+                tree("a .* b + c ./ d"));
+        // a .^ b .^ c  ==  a .^ (b .^ c)
+        assertEquals("(singleExpression (expr (expr (primary a)) .^ (expr (expr (primary b)) .^ (expr (primary c)))) <EOF>)",
+                tree("a .^ b .^ c"));
+        // -a .^ 2  ==  -(a .^ 2)
+        assertEquals("(singleExpression (expr - (expr (expr (primary a)) .^ (expr (primary 2)))) <EOF>)",
+                tree("-a .^ 2"));
+    }
+
+    @Test
+    void dotPlusAndDotMinusParseLikePlusAndMinus() {
+        assertEquals("(singleExpression (expr (expr (expr (primary a)) .+ (expr (primary b))) .- (expr (primary c))) <EOF>)",
+                tree("a .+ b .- c"));
+        // only binary: there is no unary .-
+        assertTrue(VelFrontend.parseExpression(".-a").hasErrors());
+    }
+
+    @Test
+    void numberFollowedByDotOperatorIsElementWise() {
+        assertEquals("(singleExpression (expr (expr (primary 2)) .* (expr (primary x))) <EOF>)", tree("2.*x"));
+        assertEquals("(singleExpression (expr (expr (primary 1.5)) .^ (expr (primary 2))) <EOF>)", tree("1.5.^2"));
+        assertEquals("(singleExpression (expr (expr (primary 1e3)) ./ (expr (primary x))) <EOF>)", tree("1e3./x"));
+        assertEquals("(singleExpression (expr (primary .5)) <EOF>)", tree(".5"));
+    }
+
+    @Test
+    void identifiersFollowJavaRules() {
+        assertEquals("(singleExpression (expr (expr (primary θ)) * (expr (primary 속도))) <EOF>)", tree("θ * 속도"));
+        assertEquals("(singleExpression (expr (primary a$b_1)) <EOF>)", tree("a$b_1"));
+    }
+
+    @Test
+    void lineEndingInOperatorContinues() {
+        var result = VelFrontend.parseProgram("""
+                x = a +
+                    b .*
+                    c
+                y =
+                    x
+                return y
+                """);
+        assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
+        assertEquals(3, result.tree().statement().size());
+    }
+
+    @Test
+    void multiLineBlockCommentSeparatesStatements() {
+        var result = VelFrontend.parseProgram("x = 1 /* one\n two */ y = 2 /* same line */ + 1");
+        assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
+        assertEquals(2, result.tree().statement().size());
+    }
+
+    @Test
+    void compoundAssignments() {
+        for (String op : new String[] {"=", "+=", "-=", "*=", "/=", "%=", "^=", ".+=", ".-=", ".*=", "./=", ".^="}) {
+            var result = VelFrontend.parseProgram("x " + op + " y");
+            assertFalse(result.hasErrors(), () -> op + " " + result.diagnostics());
+        }
+    }
+
     private static String tree(String expression) {
         var result = VelFrontend.parseExpression(expression);
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
