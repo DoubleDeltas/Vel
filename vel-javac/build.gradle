@@ -1,0 +1,9 @@
+dependencies {
+    implementation project(':vel-core')
+
+    testImplementation project(':vel-runtime')
+}
+
+// Only the exported com.sun.source.* API is used for now, so no --add-exports is needed.
+// Rewriting call sites (next stage) will require jdk.compiler internals:
+//   options.compilerArgs += ['--add-exports', 'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED', ...]

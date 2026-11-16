@@ -1,0 +1,10 @@
+dependencies {
+    implementation project(':vel-runtime')
+
+    annotationProcessor project(':vel-processor') // B: @Vel methods
+    annotationProcessor project(':vel-javac')     // C: inline vel("...") — plugin loaded from processor path
+}
+
+tasks.named('compileJava') {
+    options.compilerArgs += ['-Xplugin:Vel']
+}

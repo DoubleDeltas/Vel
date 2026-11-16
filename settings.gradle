@@ -1,0 +1,7 @@
+rootProject.name = 'Vel'
+
+include 'vel-runtime'    // user-facing API: @Vel, VelInline.vel(...)
+include 'vel-core'       // ANTLR grammar, parser, (later) type checker / IR / optimizer / Java emitter
+include 'vel-processor'  // B: annotation processor for @Vel methods
+include 'vel-javac'      // C: javac plugin for inline vel("...") expressions
+include 'vel-examples'   // end-to-end usage of the above

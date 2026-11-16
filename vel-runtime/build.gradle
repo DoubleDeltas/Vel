@@ -1,0 +1,1 @@
+// No dependencies: this is the only module that ends up on users' runtime classpath.

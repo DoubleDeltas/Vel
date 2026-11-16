@@ -1,0 +1,5 @@
+dependencies {
+    implementation project(':vel-core')
+
+    testImplementation project(':vel-runtime')
+}

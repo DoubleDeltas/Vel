@@ -1,0 +1,23 @@
+plugins {
+    id 'antlr'
+}
+
+def antlrVersion = '4.13.2'
+
+dependencies {
+    antlr "org.antlr:antlr4:${antlrVersion}"
+    api "org.antlr:antlr4-runtime:${antlrVersion}"
+}
+
+// The antlr plugin makes `api` extend `antlr`, leaking the whole ANTLR tool to consumers.
+// Only the runtime is needed downstream.
+configurations {
+    api {
+        setExtendsFrom(extendsFrom.findAll { it != configurations.antlr })
+    }
+}
+
+generateGrammarSource {
+    arguments += ['-visitor', '-no-listener']
+    packageName = 'com.doubledeltas.vel.parser'
+}
