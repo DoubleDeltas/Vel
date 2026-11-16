@@ -5,3 +5,8 @@
 /markdown.xml
 # 에디터 기반 HTTP 클라이언트 요청
 /httpRequests/
+# Gradle 가져오기 시 IDE가 생성하는 파일
+/gradle.xml
+/kotlinc.xml
+# 편집기 탭 상태
+/claudeCodeEditorTabs.xml
