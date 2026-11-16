@@ -169,6 +169,25 @@ class VelFrontendTest {
     }
 
     @Test
+    void backtickQuotedIdentifiersBypassPredeclaredNames() {
+        // j: imaginary unit, `j`: the Java variable named j
+        assertEquals("(singleExpression (expr (expr (primary `j`)) + (expr (primary j))) <EOF>)",
+                tree("`j` + j"));
+        assertEquals("(singleExpression (expr (expr (primary m)) [ (indexList (index (expr (primary `end`))) , (index (expr (primary end)))) ]) <EOF>)",
+                tree("m[`end`, end]"));
+        assertEquals("(singleExpression (expr (primary `f` ( (arguments (expr (primary x))) ))) <EOF>)",
+                tree("`f`(x)"));
+        for (String src : new String[] {"`j` = 1", "`end`[0] += 1", "`θ` = 2"}) {
+            var result = VelFrontend.parseProgram(src);
+            assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
+        }
+        // only a Java identifier may be quoted
+        for (String bad : new String[] {"`a b`", "`1x`", "``"}) {
+            assertTrue(VelFrontend.parseExpression(bad).hasErrors(), bad);
+        }
+    }
+
+    @Test
     void quotientAndModuloOperators() {
         // all share the multiplicative precedence, left-associative
         assertEquals("(singleExpression (expr (expr (expr (expr (primary a)) // (expr (primary b))) %% (expr (primary c))) %%% (expr (primary d))) <EOF>)",

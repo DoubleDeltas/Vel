@@ -68,9 +68,10 @@ statement
 /**
  * Assignment target: a variable, or an element / sub-matrix of one (`m[i, j]`, `m[0:2, :]`).
  * Member targets (`v.x = ...`) are not allowed.
+ * All values are immutable: `m[i] = x` binds `m` to a modified copy (copy and rewrite, as in MATLAB).
  */
 target
-    : ID ('[' indexList ']')?
+    : (ID | QUOTED_ID) ('[' indexList ']')?
     ;
 
 // Alternatives are listed from highest to lowest precedence.
@@ -106,8 +107,9 @@ expr
 primary
     : NUMBER                                                # numberLiteral
     | ('true' | 'false')                                    # boolLiteral
-    | ID '(' arguments? ')'                                 # callExpr
+    | (ID | QUOTED_ID) '(' arguments? ')'                   # callExpr
     | ID                                                    # identifier
+    | QUOTED_ID                                             # quotedIdentifier
     | '(' expr ')'                                          # parenExpr
     | '(' expr (',' expr)+ ')'                              # tupleLiteral
     | '[' matrixRow (';' matrixRow)* ']'                    # matrixLiteral
@@ -144,8 +146,10 @@ matrixRow
 // String literals used in parser rules (e.g. '+') resolve to these named tokens.
 //
 // Only Java keywords are reserved (`return`, `true`, `false`), so every Java identifier can be
-// referenced by name. `end` (inside subscripts) and `j` (imaginary unit) are ordinary identifiers
-// that are resolved by the semantic analysis, not keywords.
+// referenced by name. `end` (inside subscripts) and `j` (imaginary unit) are predeclared names,
+// lexed as ordinary identifiers and resolved by the semantic analysis. As in Kotlin, a name in
+// backticks (QUOTED_ID) bypasses the predeclared names: plain j is the imaginary unit, while
+// j wrapped in backticks is the Java variable named j.
 // ---------------------------------------------------------------------------
 
 RETURN : 'return' ;
@@ -205,6 +209,9 @@ NUMBER
 
 /** Same character classes as Java identifiers, so any Java local can be referenced by name. */
 ID : ID_START ID_PART* ;
+
+/** A Java identifier in backticks: never resolved to a predeclared name such as `j` or `end`. */
+QUOTED_ID : '`' ID_START ID_PART* '`' ;
 
 NEWLINE : ('\r'? '\n' | '\r') { if (!significantNewline()) skip(); } ;
 
