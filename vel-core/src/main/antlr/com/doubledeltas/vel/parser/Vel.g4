@@ -233,7 +233,11 @@ BLOCK_COMMENT
       }
     ;
 
-fragment ID_START : [\p{L}\p{Nl}\p{Sc}\p{Pc}] ;
+/**
+ * Java identifier characters (Character.isJavaIdentifierStart / isJavaIdentifierPart):
+ * '$' and '_' are listed explicitly; they are also covered by \p{Sc} (currency) and \p{Pc}.
+ */
+fragment ID_START : [$_\p{L}\p{Nl}\p{Sc}\p{Pc}] ;
 fragment ID_PART  : ID_START | [\p{Nd}\p{Mn}\p{Mc}] ;
 fragment DIGITS   : [0-9] ('_'? [0-9])* ;
 fragment EXPONENT : [eE] [+-]? DIGITS ;

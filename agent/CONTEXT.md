@@ -39,7 +39,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 | 모듈 | 내용 |
 |---|---|
 | `vel-runtime` | `@Vel`(SOURCE 유지), `@Dim(java=…|vel=…)`(CLASS 유지, 배열 크기 지정), `VelInline.vel(String)`(플러그인 미적용 시 예외를 던지는 자리표시자). 사용자 런타임 클래스패스에 올라가는 유일한 모듈 |
-| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic` |
+| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. 타입 모델은 `core.type` 패키지(`Card`, `Field`, `Resolution`, `Promotion`, `ScalarType`, `ArrayType`, `Shapes`, `BinaryOperator`, `TypeRules`) |
 | `vel-processor` | `VelProcessor`: `@Vel` 메서드의 배치(추상 여부, 소속)와 문법을 검증하고, 오류를 어노테이션 값 위치에 보고 |
 | `vel-javac` | `VelJavacPlugin`: ANALYZE 단계 이후 `VelInline.vel` 호출(정규화된 이름으로 판별)을 찾아 문자열 리터럴 여부와 문법을 검증. `autoStart=true` |
 | `vel-examples` | B와 C 사용 예. `annotationProcessor`로 processor와 javac 모듈을 연결 |
@@ -50,7 +50,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - **빌드 메모**:
   - antlr 플러그인이 ANTLR 도구 전체를 `api` 구성으로 흘려보내는 문제는 막아 두었다. 하위 모듈에는 `antlr4-runtime`만 전파된다.
   - 패키지는 `packageName` 속성으로 지정한다. `-package` 인자는 Gradle 9에서 deprecated다.
-- **진행 상태**: 문법 검증과 오류 보고까지 동작한다. 타입 검사와 코드 생성은 아직 없다. 테스트는 core 24, processor 3, javac 4, ksp 4, kotlinc 5개이며 모두 통과한다.
+- **진행 상태**: 문법 검증과 오류 보고, 그리고 타입 모델(규칙 계산)까지 구현되어 있다. 파스 트리에 타입을 매기는 타입 검사와 코드 생성은 아직 없다. 테스트는 core 47(문법 24, 타입 23), processor 3, javac 4, ksp 4, kotlinc 5개이며 모두 통과한다.
 
 ### 배포 (GitHub Packages)
 - 배포 대상 모듈: `vel-runtime`, `vel-core`, `vel-processor`, `vel-javac`, `vel-ksp`, `vel-kotlinc` (예제 모듈 제외). 좌표는 `com.doubledeltas:<모듈>:<버전>`
@@ -168,6 +168,20 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 범위 밖 접근(`ArrayIndexOutOfBoundsException` 등)은 NPE로 보고한다.
   - jagged 배열: 안쪽 차원을 `⊤`로 보고 같은 규칙(범위 밖은 null → NPE)을 따른다.
 
+### 타입 모델 구현 메모 (`vel-core` `core.type`)
+- `ArrayType`은 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
+- 리터럴은 `Resolution.IntLiteral`/`DecimalLiteral`(값 포함)로 표현하고, 상대 피연산자를 만날 때 `Promotion.adopt`로 해상도를 정한다. 단항 `-`는 리터럴을 리터럴로 유지한다(`x * -1`이 `x`를 따르게).
+- `j`는 `Complex` 필드 + 정수 리터럴 해상도(`ScalarType.IMAGINARY_UNIT`)로 둔다.
+- `Promotion.join`(⊔)은 최소 연산 폭을 적용하지 않는다(연결용). 산술 결과(`Promotion.arithmetic`)에만 적용한다.
+- 문서에 없어 구현하며 정한 것 (확인 필요):
+  - 리터럴끼리의 연산은 각자 기본 해상도로 확정한 뒤 계산한다(상수 접기 없음). 그래서 `0.5 * 2 * x`(x: F(32))는 F(64)가 된다.
+  - `A ^ B`에서 지수가 음이 아닌 정수 리터럴이 아니면 문서대로 `A ⊔ F(64)`이며, 지수 `B`의 해상도는 보지 않는다.
+  - Bool은 `+`(OR), `*`(AND)와 그 성분별·행렬 곱만 허용한다. 나머지 연산은 타입 오류.
+  - Complex에는 몫·나머지(`//` `///` `%%` `%%%`)가 정의되지 않는다.
+  - 행렬 `/`의 제수는 정사각이어야 한다(MATLAB의 최소제곱 해는 지원하지 않음). `^`의 지수는 스칼라만(`2^A` 같은 행렬 지수는 미지원).
+  - 범위의 경계는 실수 스칼라여야 하며, 모두 정수 리터럴이면 길이를 계산하고 아니면 `⊤`다. 원소 해상도는 경계의 ⊔(리터럴은 기본값).
+  - 함수 타입은 아직 모델에 없다(`VelType`은 `ArrayType`만 허용). 함수 문법과 함께 추가한다.
+
 ## 6. 미정 / 추후 과제
 
 - [ ] Kotlin 컴파일러 플러그인의 한계
@@ -188,7 +202,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - [ ] 의미 분석에서 거부할 것: `@Dim`에 `java`와 `vel`을 둘 다 쓰거나 둘 다 생략한 경우, 행 길이가 다른 행렬 리터럴, 범위 안의 범위(`a:b:c:d`는 `a:(b:c):d`로 파싱됨), 인덱스 밖의 `:`·`end`, `return` 없는 본문
 - [ ] `java.md` 각주: `Character.codePointAt(char[], 0)` 표현이 부정확하다. `char` 하나의 값은 그냥 `(int) c`다.
 - [ ] 구현 순서 제안
-  1. `vel-core` 타입 모델(크기 `⊤`, 브로드캐스팅, 연결 포함)
+  1. ~~`vel-core` 타입 모델(크기 `⊤`, 브로드캐스팅, 연결 포함)~~ 완료
   2. Java 매핑 모듈(`TypeMirror → VEL 타입`, `@Dim` 읽기, javax.lang.model 의존, 예: `vel-java-model`)
   3. 타입 검사
   4. B 방식 코드 생성(`<Owner>Vel` 구현 클래스)

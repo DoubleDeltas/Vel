@@ -110,6 +110,10 @@ class VelFrontendTest {
     void identifiersFollowJavaRules() {
         assertEquals("(singleExpression (expr (expr (primary θ)) * (expr (primary 속도))) <EOF>)", tree("θ * 속도"));
         assertEquals("(singleExpression (expr (primary a$b_1)) <EOF>)", tree("a$b_1"));
+        // '$' may start a name or be the whole name, as in Java
+        assertEquals("(singleExpression (expr (expr (primary $x)) + (expr (primary $))) <EOF>)", tree("$x + $"));
+        assertEquals("(singleExpression (expr (primary _$1)) <EOF>)", tree("_$1"));
+        assertEquals("(singleExpression (expr (primary `$j`)) <EOF>)", tree("`$j`"));
     }
 
     @Test
