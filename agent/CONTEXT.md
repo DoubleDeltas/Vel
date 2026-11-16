@@ -23,7 +23,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 
 - **Kotlin도 지원한다 (2026-11-17 결정).** 대상은 Kotlin/JVM. 타입 매핑은 `docs/type-mapping/kotlin.md`.
   - B(`@Vel` 함수)는 **KSP**로 처리한다(결정됨, `vel-ksp`). kapt는 쓰지 않는다.
-  - C(인라인 `vel()`)의 Kotlin 처리 방식은 미정(Kotlin 컴파일러 플러그인 필요).
+  - C(인라인 `vel()`)는 **Kotlin 컴파일러 플러그인**으로 처리한다(결정됨, `vel-kotlinc`). K2 대응이며 IR 단계(`IrGenerationExtension`)에서 동작한다. 나중의 코드 치환도 IR에서 한다.
 - **Java 문법에 직접 섞는 방식(예: `Vec3 r = p + v*dt;`)은 배제한다.** javac 파서가 플러그인보다 먼저 실행되므로 불가능하다.
 - **핵심 원칙**: 파서, 타입 검사, IR, 최적화, Java 코드 생성은 javac에 의존하지 않는 `vel-core`에 둔다. 각 처리기는 코어를 감싸는 얇은 껍데기로 만든다.
 - **C 방식은 javac 플러그인에서 처리한다 (결정됨).** 타입 분석이 끝난 AST에서 지역 변수 타입을 읽어 타입 검사와 코드 치환을 모두 플러그인에서 한다.
@@ -44,12 +44,13 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 | `vel-javac` | `VelJavacPlugin`: ANALYZE 단계 이후 `VelInline.vel` 호출(정규화된 이름으로 판별)을 찾아 문자열 리터럴 여부와 문법을 검증. `autoStart=true` |
 | `vel-examples` | B와 C 사용 예. `annotationProcessor`로 processor와 javac 모듈을 연결 |
 | `vel-ksp` | `VelSymbolProcessor`(Kotlin): Kotlin의 `@Vel` 함수 배치(추상 여부, 소속)와 문법을 검증하고 오류를 어노테이션 위치에 보고. `vel-processor`의 Kotlin 대응 |
-| `vel-examples-kotlin` | Kotlin B 사용 예. `ksp project(':vel-ksp')`로 연결 |
+| `vel-kotlinc` | Kotlin 컴파일러 플러그인: IR 단계에서 `VelInline.vel` 호출(`CallableId`로 판별)을 찾아 문자열 리터럴 여부(템플릿 불가)와 문법을 검증. 오류는 `IrDiagnosticReporter`로 `VEL_ERROR`/`VEL_WARNING` 진단을 보고 |
+| `vel-examples-kotlin` | Kotlin B·C 사용 예. `ksp project(':vel-ksp')`, `kotlinCompilerPluginClasspathMain project(':vel-kotlinc')`로 연결 |
 
 - **빌드 메모**:
   - antlr 플러그인이 ANTLR 도구 전체를 `api` 구성으로 흘려보내는 문제는 막아 두었다. 하위 모듈에는 `antlr4-runtime`만 전파된다.
   - 패키지는 `packageName` 속성으로 지정한다. `-package` 인자는 Gradle 9에서 deprecated다.
-- **진행 상태**: 문법 검증과 오류 보고까지 동작한다. 타입 검사와 코드 생성은 아직 없다. 테스트는 core 24, processor 3, javac 4, ksp 4개이며 모두 통과한다.
+- **진행 상태**: 문법 검증과 오류 보고까지 동작한다. 타입 검사와 코드 생성은 아직 없다. 테스트는 core 24, processor 3, javac 4, ksp 4, kotlinc 5개이며 모두 통과한다.
 
 ## 4. 문법 현황 (`vel-core/src/main/antlr/.../Vel.g4`)
 
@@ -157,7 +158,10 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 
 ## 6. 미정 / 추후 과제
 
-- [ ] **Kotlin C 방식(인라인 `vel()`)**: Kotlin 컴파일러 플러그인(K2 FIR/IR)이 필요하다. `VelInline.vel`을 Kotlin에서 부를 수 있게 할지도 함께 정한다.
+- [ ] Kotlin 컴파일러 플러그인의 한계
+  - IR 단계라서 오류가 IDE 편집기에는 표시되지 않고 빌드할 때만 나온다. IDE에 표시하려면 FIR 체커(`FirAdditionalCheckersExtension`)가 필요하다.
+  - 컴파일러 플러그인 API는 Kotlin 버전마다 바뀌므로, Kotlin을 올릴 때 `vel-kotlinc`를 함께 확인해야 한다.
+  - Gradle 사용자를 위한 Gradle 플러그인(`KotlinCompilerPluginSupportPlugin`)은 아직 없다. 지금은 `kotlinCompilerPluginClasspathMain`에 직접 추가한다.
 - [ ] Kotlin 문자열 템플릿: `@Vel("...")` 안의 `$`는 Kotlin 템플릿으로 해석된다. VEL 식별자에 `$`가 있으면 `${'$'}`로 써야 한다.
 - [ ] Kotlin 고유 기능의 매핑: `operator fun`을 정의한 사용자 타입, 기본값·이름 있는 인자, `IntRange` 등
 

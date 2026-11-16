@@ -6,5 +6,6 @@ plugins {
 dependencies {
     implementation project(':vel-runtime')
 
-    ksp project(':vel-ksp')   // B: @Vel functions
+    ksp project(':vel-ksp')                                  // B: @Vel functions
+    kotlinCompilerPluginClasspathMain project(':vel-kotlinc') // C: inline vel("...") expressions
 }

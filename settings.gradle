@@ -10,4 +10,5 @@ include 'vel-examples'   // end-to-end usage of the above
 
 // Kotlin
 include 'vel-ksp'               // B: KSP processor for @Vel functions
-include 'vel-examples-kotlin'   // end-to-end usage of vel-ksp
+include 'vel-kotlinc'            // C: Kotlin compiler plugin for inline vel("...") expressions
+include 'vel-examples-kotlin'   // end-to-end usage of vel-ksp and vel-kotlinc

@@ -1,0 +1,13 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+dependencies {
+    implementation project(':vel-core')
+    // Provided by the Kotlin compiler at runtime. Gradle runs the embeddable (relocated) compiler.
+    compileOnly 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21'
+
+    testImplementation project(':vel-runtime')
+    testImplementation 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.21'
+    testImplementation 'dev.zacsweers.kctfork:core:0.14.0'
+}
