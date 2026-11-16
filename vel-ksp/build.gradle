@@ -1,0 +1,11 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+dependencies {
+    implementation project(':vel-core')
+    implementation 'com.google.devtools.ksp:symbol-processing-api:2.3.14'
+
+    testImplementation project(':vel-runtime')
+    testImplementation 'dev.zacsweers.kctfork:ksp:0.14.0'
+}

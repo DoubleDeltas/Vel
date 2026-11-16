@@ -1,0 +1,10 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'com.google.devtools.ksp'
+}
+
+dependencies {
+    implementation project(':vel-runtime')
+
+    ksp project(':vel-ksp')   // B: @Vel functions
+}
