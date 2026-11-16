@@ -14,15 +14,18 @@ grammar Vel;
         return t;
     }
 
-    /** A line ending in a binary operator, '=', ',' or '.' continues on the next line. */
+    /** A line ending in a binary operator, '=', ',', ':' or '.' continues on the next line. */
     private boolean continuesLine() {
         switch (lastType) {
-            case PLUS: case MINUS: case STAR: case SLASH: case PERCENT: case CARET:
+            case PLUS: case MINUS: case STAR: case SLASH: case SLASH_SLASH: case SLASH_SLASH_SLASH:
+            case PERCENT_PERCENT: case PERCENT_PERCENT_PERCENT: case CARET:
             case DOT_PLUS: case DOT_MINUS: case DOT_STAR: case DOT_SLASH: case DOT_CARET:
             case ASSIGN: case PLUS_ASSIGN: case MINUS_ASSIGN: case STAR_ASSIGN: case SLASH_ASSIGN:
-            case PERCENT_ASSIGN: case CARET_ASSIGN: case DOT_PLUS_ASSIGN: case DOT_MINUS_ASSIGN:
-            case DOT_STAR_ASSIGN: case DOT_SLASH_ASSIGN: case DOT_CARET_ASSIGN:
-            case COMMA: case DOT:
+            case SLASH_SLASH_ASSIGN: case SLASH_SLASH_SLASH_ASSIGN: case PERCENT_PERCENT_ASSIGN: case PERCENT_PERCENT_PERCENT_ASSIGN:
+            case CARET_ASSIGN:
+            case DOT_PLUS_ASSIGN: case DOT_MINUS_ASSIGN: case DOT_STAR_ASSIGN: case DOT_SLASH_ASSIGN:
+            case DOT_CARET_ASSIGN:
+            case COMMA: case COLON: case DOT:
                 return true;
             default:
                 return false;
@@ -56,43 +59,78 @@ sep
 
 statement
     : 'return' expr                                         # returnStmt
-    | ID op=( '='
-            | '+=' | '-=' | '*=' | '/=' | '%=' | '^='
-            | '.+=' | '.-=' | '.*=' | './=' | '.^=' ) expr  # assignStmt
+    | target op=( '='
+                | '+=' | '-=' | '*=' | '/=' | '//=' | '///=' | '%%=' | '%%%=' | '^='
+                | '.+=' | '.-=' | '.*=' | './=' | '.^=' ) expr  # assignStmt
     | expr                                                  # exprStmt
+    ;
+
+/**
+ * Assignment target: a variable, or an element / sub-matrix of one (`m[i, j]`, `m[0:2, :]`).
+ * Member targets (`v.x = ...`) are not allowed.
+ */
+target
+    : ID ('[' indexList ']')?
     ;
 
 // Alternatives are listed from highest to lowest precedence.
 //
 // Operators follow MATLAB:
-//   *  /  ^    matrix product / right division / matrix power (scalar operands: ordinary arithmetic)
+//   *  /  ^    matrix product / right division / matrix power (scalar operands: ordinary arithmetic;
+//              `/` on scalars is true division)
 //   .* ./ .^   element-wise
 //   .+ .-      aliases of + and - (which are already element-wise), for symmetry
 //   '          conjugate transpose (same as .' for real values)
 //   .'         transpose
+//   a:b a:s:b  inclusive range (lowest precedence: `a+1:b-1` == `(a+1):(b-1)`)
+// Integer-style division comes in two pairs; the number of symbols tells the rounding:
+//   // and %%    floor: quotient toward -infinity, remainder has the divisor's sign
+//                (Python // and %, Java Math.floorDiv / Math.floorMod)
+//   /// and %%%  truncate: quotient toward zero, remainder has the dividend's sign
+//                (Java integer / and %)
+// A single % does not exist, so Java's `a % b` must be written `a %%% b`.
 expr
     : primary                                               # primaryExpr
+    | expr '.' ID '(' arguments? ')'                        # methodCallExpr
     | expr '.' ID                                           # memberExpr
-    | expr '[' expr (',' expr)* ']'                         # indexExpr
+    | expr '[' indexList ']'                                # indexExpr
     | expr op=('\'' | '.\'')                                # transposeExpr
     | <assoc=right> expr op=('^' | '.^') expr               # powExpr
     | op=('-' | '+') expr                                   # unaryExpr
-    | expr op=('*' | '/' | '%' | '.*' | './') expr          # mulExpr
+    | expr op=('*' | '/' | '//' | '///' | '%%' | '%%%' | '.*' | './') expr  # mulExpr
     | expr op=('+' | '-' | '.+' | '.-') expr                # addExpr
+    | expr ':' expr ':' expr                                # rangeStepExpr
+    | expr ':' expr                                         # rangeExpr
     ;
 
 primary
     : NUMBER                                                # numberLiteral
-    | ID '(' (expr (',' expr)*)? ')'                        # callExpr
+    | ('true' | 'false')                                    # boolLiteral
+    | ID '(' arguments? ')'                                 # callExpr
     | ID                                                    # identifier
     | '(' expr ')'                                          # parenExpr
     | '(' expr (',' expr)+ ')'                              # tupleLiteral
     | '[' matrixRow (';' matrixRow)* ']'                    # matrixLiteral
     ;
 
+arguments
+    : expr (',' expr)*
+    ;
+
+/** MATLAB-style subscripts: an index, a range (`1:3`, `0:2:end`), or `:` for the whole dimension. */
+indexList
+    : index (',' index)*
+    ;
+
+index
+    : ':'                                                   # wholeIndex
+    | expr                                                  # exprIndex
+    ;
+
 /**
  * Row-major literal: `[1, 2, 3]` is a 1x3 row vector, `[1, 2; 3, 4]` is a 2x2 matrix.
- * A column vector is written as a tuple: `(x, y, z)` == `[x, y, z].'` (3x1).
+ * Elements may themselves be matrices (block matrix): `[A, B; C, D]`.
+ * A column vector is written as a tuple: `(x, y, z)` == `[x; y; z]` (3x1).
  * `(x)` is just a parenthesized expression, not a 1-element tuple.
  */
 matrixRow
@@ -104,26 +142,36 @@ matrixRow
 //
 // Every operator / punctuation has a named token so lexer actions can refer to it.
 // String literals used in parser rules (e.g. '+') resolve to these named tokens.
+//
+// Only Java keywords are reserved (`return`, `true`, `false`), so every Java identifier can be
+// referenced by name. `end` (inside subscripts) and `j` (imaginary unit) are ordinary identifiers
+// that are resolved by the semantic analysis, not keywords.
 // ---------------------------------------------------------------------------
 
 RETURN : 'return' ;
+TRUE   : 'true' ;
+FALSE  : 'false' ;
 
 LPAREN : '(' { nesting++; } ;
 RPAREN : ')' { if (nesting > 0) nesting--; } ;
 LBRACK : '[' { nesting++; } ;
 RBRACK : ']' { if (nesting > 0) nesting--; } ;
 
-COMMA  : ',' ;
-SEMI   : ';' ;
+COMMA    : ',' ;
+SEMI     : ';' ;
+COLON    : ':' ;
 TICK     : '\'' ;
 DOT_TICK : '.\'' ;
 
-PLUS    : '+' ;
-MINUS   : '-' ;
-STAR    : '*' ;
-SLASH   : '/' ;
-PERCENT : '%' ;
-CARET   : '^' ;
+PLUS            : '+' ;
+MINUS           : '-' ;
+STAR            : '*' ;
+SLASH           : '/' ;
+SLASH_SLASH       : '//' ;
+SLASH_SLASH_SLASH : '///' ;
+PERCENT_PERCENT         : '%%' ;
+PERCENT_PERCENT_PERCENT : '%%%' ;
+CARET           : '^' ;
 
 DOT_PLUS  : '.+' ;
 DOT_MINUS : '.-' ;
@@ -131,18 +179,21 @@ DOT_STAR  : '.*' ;
 DOT_SLASH : './' ;
 DOT_CARET : '.^' ;
 
-ASSIGN           : '=' ;
-PLUS_ASSIGN      : '+=' ;
-MINUS_ASSIGN     : '-=' ;
-STAR_ASSIGN      : '*=' ;
-SLASH_ASSIGN     : '/=' ;
-PERCENT_ASSIGN   : '%=' ;
-CARET_ASSIGN     : '^=' ;
-DOT_PLUS_ASSIGN  : '.+=' ;
-DOT_MINUS_ASSIGN : '.-=' ;
-DOT_STAR_ASSIGN  : '.*=' ;
-DOT_SLASH_ASSIGN : './=' ;
-DOT_CARET_ASSIGN : '.^=' ;
+ASSIGN                 : '=' ;
+PLUS_ASSIGN            : '+=' ;
+MINUS_ASSIGN           : '-=' ;
+STAR_ASSIGN            : '*=' ;
+SLASH_ASSIGN           : '/=' ;
+SLASH_SLASH_ASSIGN       : '//=' ;
+SLASH_SLASH_SLASH_ASSIGN : '///=' ;
+PERCENT_PERCENT_ASSIGN         : '%%=' ;
+PERCENT_PERCENT_PERCENT_ASSIGN : '%%%=' ;
+CARET_ASSIGN           : '^=' ;
+DOT_PLUS_ASSIGN        : '.+=' ;
+DOT_MINUS_ASSIGN       : '.-=' ;
+DOT_STAR_ASSIGN        : '.*=' ;
+DOT_SLASH_ASSIGN       : './=' ;
+DOT_CARET_ASSIGN       : '.^=' ;
 
 DOT : '.' ;
 
@@ -157,8 +208,10 @@ ID : ID_START ID_PART* ;
 
 NEWLINE : ('\r'? '\n' | '\r') { if (!significantNewline()) skip(); } ;
 
-WS           : [ \t\f]+ -> skip ;
-LINE_COMMENT : '//' ~[\r\n]* -> skip ;
+WS : [ \t\f]+ -> skip ;
+
+/** `#` starts a line comment (`//` and `///` are quotient operators). */
+LINE_COMMENT : '#' ~[\r\n]* -> skip ;
 
 /** A block comment spanning lines acts as a line break, like the newline it hides. */
 BLOCK_COMMENT

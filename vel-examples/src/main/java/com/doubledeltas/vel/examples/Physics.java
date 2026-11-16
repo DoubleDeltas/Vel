@@ -8,7 +8,7 @@ public interface Physics {
 
     // B: whole method body in VEL
     @Vel("""
-        // constant-acceleration step
+        # constant-acceleration step
         return p + v * dt + 0.5 * a * dt^2
         """)
     double position(double p, double v, double a, double dt);

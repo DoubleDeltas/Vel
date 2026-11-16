@@ -28,6 +28,8 @@ Java 타입 시스템 및 SDK에서 정의된 라이브러리와의 기본 매�
 | `java.lang.Boolean` | $\langle\mathrm{Bool}\rangle$ |
 | `java.lang.Character` | $\langle\mathrm{Real}\rangle_{Z+}(16)$[^1] |
 
+래퍼 타입의 값이 `null`이면 `NullPointerException`을 던진다.
+
 ### 1.3. 임의 정밀도
 | Java 타입 | VEL 타입 |
 | --- | --- |
@@ -49,6 +51,9 @@ $\langle\mathrm{Real}\rangle_D(\infty)$의 정밀도 처리(VEL 타입 시스템
   2. 나누어떨어지지 않아 `ArithmeticException`이 나면 `p.divide(q, mathContext)`로 반올림한다.
   - 정확히 나누어떨어지는지는 분모의 소인수가 2와 5뿐인지로 미리 판정할 수도 있다.
 
+### 1.4. 십진 부동소수
+JDK에는 $\langle\mathrm{Real}\rangle_D(n)$에 대응하는 타입이 없다. 이 해상도의 값이 Java로 나갈 때는 `BigDecimal`로 표현하고, 너비에 맞는 문맥(`MathContext.DECIMAL32`, `DECIMAL64`, `DECIMAL128`)으로 반올림한다.
+
 ## 2. 시퀀스
 이 문단에서 "시퀀스"는 다음 중 하나를 말하며, `a[]`로 표기한다.
 - Java 배열(`int[]`)
@@ -60,9 +65,44 @@ $\langle\mathrm{Real}\rangle_D(\infty)$의 정밀도 처리(VEL 타입 시스템
 
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
+### 2.1. 크기
+Java 배열과 `List`의 길이는 컴파일 타임에 알 수 없으므로, 각 차원의 크기는 기본적으로 $\top$이다(VEL 타입 시스템 1.2절).
+
+`@Dim` 어노테이션으로 크기를 지정할 수 있다. 다음 둘 중 **정확히 하나**를 쓴다. 둘 다 쓰거나 둘 다 생략하면 컴파일 오류다.
+- `java`: **Java 선언 순서**(바깥 배열부터)
+- `vel`: **VEL 순서**(행 먼저. $\mathrm{Mat}(m, n)$이면 `{m, n}`)
+
+2절의 매핑 때문에 두 순서는 서로 뒤집혀 있다. 모르는 차원은 `Dim.TOP`으로 둔다.
+
+| Java 선언 | VEL 타입 |
+| --- | --- |
+| `double[] v` | $\mathrm{Vec}(\top, F)$ |
+| `@Dim(java = 3) double[] v` | $\mathrm{Vec}(3, F)$ |
+| `@Dim(java = {4, 3}) double[][] m` | $\mathrm{Mat}(3, 4, F)$ |
+| `@Dim(vel = {3, 4}) double[][] m` | $\mathrm{Mat}(3, 4, F)$ (위와 같음) |
+| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\mathrm{Mat}(3, \top, F)$ |
+
+`@Dim`은 매개변수, 필드, 지역 변수, 메서드(반환값)에 붙일 수 있다.
+- 지정한 크기는 신뢰하며 런타임에 검사하지 않는다.
+- 실제 길이가 지정한 크기와 다를 때의 동작은 정의하지 않는다.
+
+### 2.2. 범위 밖 접근과 null
+크기가 $\top$인 차원에서 실제 길이 이상의 인덱스에 있는 원소는 null로 취급하고, 연산에 쓰이면 `NullPointerException`을 던진다.
+- Java 배열의 범위 밖 접근에서 생기는 `ArrayIndexOutOfBoundsException`, `List`의 `IndexOutOfBoundsException`은 `NullPointerException`으로 보고한다.
+- 시퀀스 자체나 원소(래퍼 타입)가 `null`이어도 `NullPointerException`을 던진다.
+
+### 2.3. 들쭉날쭉한 배열 (jagged array)
+`double[][]`처럼 안쪽 배열의 길이가 서로 다를 수 있는 경우에도 별도 처리를 하지 않는다.
+- 안쪽 차원의 크기는 $\top$으로 보고 2.2절을 따른다.
+- 짧은 행의 범위 밖 원소는 null이 되어, 연산에 쓰이면 `NullPointerException`이 발생한다.
+
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
 정적 메소드와 함수형 인터페이스의 유일한 함수의 모든 인자 타입과 반환 타입이 VEL로 변환 가능하다면 VEL의 함수 타입으로 취급한다.
 
 `T` 타입의 동적 메소드 `R foo(U bar)`는 가장 첫 인자를 `T`로 취급해 $T \times U \mapsto R$로 변환한다.
+
+호출 문법은 Java를 따른다.
+- 동적 메소드: `t.foo(x)`. `foo(t, x)` 형태로는 부를 수 없다.
+- 정적 메소드: `T.foo(x)` (정규화된 이름 `java.lang.Math.sqrt(x)`도 가능)
 
 [^1]: `Character.codePointAt(char[], 0)`를 이용해 코드포인트 값을 취급한다.
