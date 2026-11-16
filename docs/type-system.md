@@ -20,7 +20,7 @@ $$ \mathrm{Mat}(m,n,F) := \mathrm{Array}(m,n,F)$$
 **벡터**는 열벡터로 표현한다.
 $$ \mathrm{Vec}(n, F) := \mathrm{Mat}(n, 1, F) $$
 
-**스칼라**는 자신의 체에 대해 $1 \times 1$ 행렬로 취급한다.
+**스칼라**는 자신의 타입에 대해 $1 \times 1$ 행렬로 취급한다.
 $$ [F]:=\mathrm{Mat}(1,1,F) $$
 
 ### 1.1. 스칼라 타입

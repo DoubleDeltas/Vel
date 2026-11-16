@@ -61,6 +61,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 수동 실행(`gh workflow run publish.yml`) → `1.0-SNAPSHOT`
   - 로컬 `gh` 토큰에는 `write:packages` 권한이 없으므로 로컬 배포는 하지 않는다.
 - 배포 전 점검: `./gradlew publishAllPublicationsToBuildRepoRepository` (결과는 `build/repo`)
+- 라이선스: **MIT** (`LICENSE`, 저작권자 `DoubleDeltas`). POM에도 라이선스 정보를 넣는다.
 - **사용하는 쪽도 인증이 필요하다**: GitHub Packages의 Maven 저장소는 공개 패키지라도 읽을 때 `read:packages` 권한 토큰이 필요하다.
 
 ## 4. 문법 현황 (`vel-core/src/main/antlr/.../Vel.g4`)

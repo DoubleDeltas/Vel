@@ -58,6 +58,12 @@ subprojects {
                         name = project.name
                         description = 'VEL (Vector Expression Language): vector and matrix expressions for Java and Kotlin'
                         url = 'https://github.com/DoubleDeltas/Vel'
+                        licenses {
+                            license {
+                                name = 'MIT License'
+                                url = 'https://opensource.org/licenses/MIT'
+                            }
+                        }
                         scm {
                             url = 'https://github.com/DoubleDeltas/Vel'
                             connection = 'scm:git:https://github.com/DoubleDeltas/Vel.git'
