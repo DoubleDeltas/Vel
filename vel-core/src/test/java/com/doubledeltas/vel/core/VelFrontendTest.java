@@ -294,6 +294,46 @@ class VelFrontendTest {
     }
 
     @Test
+    void conditionalExpression() {
+        assertEquals("(singleExpression (expr if (expr (primary c)) then (expr (primary a)) else (expr (primary b))) <EOF>)",
+                tree("if c then a else b"));
+        // the else branch extends as far as possible: if c then a else (b + 1)
+        assertEquals("(singleExpression (expr if (expr (primary c)) then (expr (primary a)) else (expr (expr (primary b)) + (expr (primary 1)))) <EOF>)",
+                tree("if c then a else b + 1"));
+        // else-if chains nest in the else branch
+        assertEquals("(singleExpression (expr if (expr (primary c1)) then (expr (primary a)) else (expr if (expr (primary c2)) then (expr (primary b)) else (expr (primary d)))) <EOF>)",
+                tree("if c1 then a else if c2 then b else d"));
+        // as an operand: x * (if c then 2 else 3)
+        assertFalse(VelFrontend.parseExpression("x * (if c then 2 else 3)").hasErrors());
+        // else is required
+        assertTrue(VelFrontend.parseExpression("if c then a").hasErrors());
+    }
+
+    @Test
+    void conditionalExpressionSpansLines() {
+        var result = VelFrontend.parseProgram("""
+                y = if c
+                    then a
+                    else b
+                z = if c then
+                        a
+                    else
+                        b
+                return y + z
+                """);
+        assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
+        assertEquals(3, result.tree().statement().size());
+    }
+
+    @Test
+    void thenIsReservedButBacktickedNamesWork() {
+        assertTrue(VelFrontend.parseExpression("then + 1").hasErrors());
+        assertEquals("(singleExpression (expr (expr (primary `then`)) + (expr (primary 1))) <EOF>)", tree("`then` + 1"));
+        // identifiers that only start with a keyword are unaffected
+        assertEquals("(singleExpression (expr (expr (primary thenValue)) + (expr (primary iff))) <EOF>)", tree("thenValue + iff"));
+    }
+
+    @Test
     void cutPointsAreSubscripts() {
         // the example: [A, B; C, D] = M[0:2:3, 0:1:3]
         var blocks = VelFrontend.parseProgram("M = [1, 2, 3; 4, 5, 6; 7, 8, 9]\n[A, B; C, D] = M[0:2:3, 0:1:3]\nreturn A");

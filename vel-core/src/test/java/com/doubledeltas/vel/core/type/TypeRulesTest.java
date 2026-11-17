@@ -194,8 +194,8 @@ class TypeRulesTest {
         // (x, y, z) = [x; y; z] : Vec(3)
         ArrayType x = ArrayType.scalar(F64);
         assertEquals(ArrayType.vec(n(3), F64), TypeRules.tuple(List.of(x, x, x)));
-        // block tuple: (A, B) = [A; B]
-        assertEquals(mat(n(5), n(3)), TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(3), n(3)))));
+        // a tuple of matrices of different shapes cannot be stacked (it is not a concatenation)
+        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(3), n(3)))));
     }
 
     @Test
@@ -261,14 +261,31 @@ class TypeRulesTest {
     void destructuring() {
         // (x, y, z) = (1, 2, 3): each target is a Z(32) scalar
         ArrayType value = TypeRules.tuple(List.of(lit(1), lit(2), lit(3)));
-        assertEquals(ArrayType.scalar(I32), TypeRules.destructure(value, 3, 1));
-        // [a, b; c, d] = M with M: Mat(2, 2, F(64))
-        assertEquals(ArrayType.scalar(F64), TypeRules.destructure(mat(n(2), n(2)), 2, 2));
+        assertEquals(ArrayType.scalar(I32), TypeRules.destructureTuple(value, 3));
+        // [a, b; c, d] = M with M: Mat(2, 2, F(64)): elements
+        assertEquals(ArrayType.scalar(F64), TypeRules.destructureMatrix(mat(n(2), n(2)), 2, 2));
+        // (u, v) = M with M: Mat(2, 3): the rows, as Vec(3) (undoes the stacking of a tuple)
+        assertEquals(ArrayType.vec(n(3), F64), TypeRules.destructureTuple(mat(n(2), n(3)), 2));
         // ⊤ sizes are accepted (checked at runtime as usual), known mismatches are errors
-        assertEquals(ArrayType.scalar(F64), TypeRules.destructure(ArrayType.vec(TOP, F64), 3, 1));
-        assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.vec(n(2), F64), 3, 1));
-        assertThrows(VelTypeException.class, () -> TypeRules.destructure(mat(n(2), n(2)), 4, 1));
-        assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.of(F64, n(2), n(2), n(2)), 2, 2));
+        assertEquals(ArrayType.scalar(F64), TypeRules.destructureTuple(ArrayType.vec(TOP, F64), 3));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructureTuple(ArrayType.vec(n(2), F64), 3));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(mat(n(2), n(2)), 4, 1));
+    }
+
+    @Test
+    void tuplesStackTheirItems() {
+        ArrayType u = ArrayType.vec(n(3), F64);
+        // (u, v) of Vec(3): Mat(2, 3), item i is row i
+        assertEquals(mat(n(2), n(3)), TypeRules.tuple(List.of(u, u)));
+        // (A, B) of Mat(2, 3): Array(2, 2, 3)
+        assertEquals(ArrayType.of(F64, n(2), n(2), n(3)), TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(2), n(3)))));
+        // items must have the same shape; ⊤ follows the usual rule; resolutions join
+        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, ArrayType.vec(n(4), F64))));
+        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, lit(1))));
+        assertEquals(mat(n(2), TOP), TypeRules.tuple(List.of(u, ArrayType.vec(TOP, F64))));
+        assertEquals(ArrayType.vec(n(2), F64), TypeRules.tuple(List.of(lit(1), ArrayType.scalar(F64))));
+        // stacking then destructuring gives the items back
+        assertEquals(u, TypeRules.destructureTuple(TypeRules.tuple(List.of(u, u)), 2));
     }
 
     @Test
@@ -276,19 +293,23 @@ class TypeRulesTest {
         ArrayType m = ArrayType.mat(n(3), n(3), I32);
         Subscript rows023 = Subscript.partition(List.of(lit(0), lit(2), lit(3)));   // [0,2), [2,3)
         Subscript cols013 = Subscript.partition(List.of(lit(0), lit(1), lit(3)));   // [0,1), [1,3)
-        // blocks of different sizes: block sizes are ⊤, 2x2 blocks
+        // 2x2 blocks of different sizes: block indices first, block sizes ⊤
         ArrayType t = TypeRules.index(m, List.of(rows023, cols013));
-        assertEquals(ArrayType.of(I32, TOP, TOP, n(2), n(2)), t);
-        // equal blocks keep their size: M6x6[0:2:4:6, 0:3:6] -> Array(2, 3, 3, 2)
+        assertEquals(ArrayType.of(I32, n(2), n(2), TOP, TOP), t);
+        // equal blocks keep their size: M6x6[0:2:4:6, 0:3:6] -> Array(3, 2, 2, 3)
         ArrayType m6 = ArrayType.mat(n(6), n(6), I32);
         ArrayType even = TypeRules.index(m6, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))),
                 Subscript.partition(List.of(lit(0), lit(3), lit(6)))));
-        assertEquals(ArrayType.of(I32, n(2), n(3), n(3), n(2)), even);
-        // a single column block drops the last dimension: a 3-dimensional array
+        assertEquals(ArrayType.of(I32, n(3), n(2), n(2), n(3)), even);
+        // only the rows partitioned: Array(k, h, w), a stack of row blocks
         ArrayType rowsOnly = TypeRules.index(m6, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))), Subscript.all()));
-        assertEquals(ArrayType.of(I32, n(2), n(6), n(3)), rowsOnly);
+        assertEquals(ArrayType.of(I32, n(3), n(2), n(6)), rowsOnly);
+        // a vector partition is a stack of column vectors: Mat(k, h)
+        ArrayType v = ArrayType.vec(n(6), I32);
+        assertEquals(ArrayType.mat(n(3), n(2), I32), TypeRules.index(v, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))))));
         // cut points: strictly increasing, within the size, non-negative integers
         assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(2))), Subscript.all())));
@@ -305,8 +326,8 @@ class TypeRulesTest {
         ArrayType t = TypeRules.index(m, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(3))),
                 Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
-        assertEquals(ArrayType.mat(TOP, TOP, I32), TypeRules.destructure(t, 2, 2));
-        assertThrows(VelTypeException.class, () -> TypeRules.destructure(t, 3, 1));
+        assertEquals(ArrayType.mat(TOP, TOP, I32), TypeRules.destructureMatrix(t, 2, 2));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(t, 3, 1));
         // with the partition at hand each block gets its exact type:
         // A = [1; 4] (2x1), B = [2, 3; 5, 6] (2x2), C = 7 (scalar), D = [8, 9] (1x2)
         List<List<ArrayType>> exact = TypeRules.blocks(m, List.of(
@@ -316,10 +337,28 @@ class TypeRulesTest {
         assertEquals(ArrayType.mat(n(2), n(2), I32), exact.get(0).get(1));
         assertTrue(exact.get(1).get(0).isScalar());
         assertEquals(ArrayType.mat(n(1), n(2), I32), exact.get(1).get(1));
-        // (Top, Bottom) = M6[0:3:6, :]: tuple pattern over a 3-dimensional block tensor
+        // (Top, Bottom) = M6[0:3:6, :]: tuple pattern over the stack of row blocks
         ArrayType m6 = ArrayType.mat(n(6), n(4), F64);
         ArrayType halves = TypeRules.index(m6, List.of(Subscript.partition(List.of(lit(0), lit(3), lit(6))), Subscript.all()));
-        assertEquals(ArrayType.mat(n(3), n(4), F64), TypeRules.destructure(halves, 2, 1));
+        assertEquals(ArrayType.mat(n(3), n(4), F64), TypeRules.destructureTuple(halves, 2));
+    }
+
+    @Test
+    void conditional() {
+        ArrayType cond = ArrayType.scalar(ScalarType.BOOL);
+        // branches join: Z(32) and F(32) -> F(32); literals follow their partner
+        assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, ArrayType.scalar(I32), ArrayType.scalar(F32)));
+        assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, lit(1), ArrayType.scalar(F32)));
+        // shapes must agree; ⊤ follows the usual rule
+        assertEquals(ArrayType.vec(n(3), F64), TypeRules.conditional(cond, ArrayType.vec(n(3), F64), ArrayType.vec(n(3), F64)));
+        assertEquals(ArrayType.vec(TOP, F64), TypeRules.conditional(cond, ArrayType.vec(TOP, F64), ArrayType.vec(n(3), F64)));
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.conditional(cond, ArrayType.vec(n(3), F64), ArrayType.vec(n(4), F64)));
+        // the condition is a Bool scalar; Bool and numeric branches don't mix
+        assertThrows(VelTypeException.class, () -> TypeRules.conditional(lit(1), lit(1), lit(2)));
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.conditional(ArrayType.vec(n(2), ScalarType.BOOL), lit(1), lit(2)));
+        assertThrows(VelTypeException.class, () -> TypeRules.conditional(cond, cond, lit(2)));
     }
 
     // ---- @Dim -------------------------------------------------------------------------------------

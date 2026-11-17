@@ -105,6 +105,30 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). 따라서 Java에서 넘�
 - 복사 생략 최적화는 VEL이 직접 만든 값에만 적용한다. Java에서 넘겨받은 배열은 Java 쪽에서 계속 참조할 수 있으므로, 고치기 전에 반드시 복사한다.
 - VEL 밖으로 나가는 배열 값(`return` 등)은 새로 만든 Java 배열이다.
 
+### 2.5. 성분 객체
+다음 타입 $T$를 **성분 객체**라 하며, 성분 타입 $C_1, \cdots, C_N$을 갖는다.
+- `record`: 레코드 구성 요소(선언 순서)
+- 메서드 `component1()`, …, `componentN()`이 있는 클래스(예: Kotlin의 `Pair`, `Triple`, data class): 각 메서드의 반환 타입
+
+각 성분 타입이 VEL 타입 $C_i \mapsto \mathrm{Array}(\mathbf d_i, \langle\mathbb K_i\rangle_{R_i})$로 변환되고, 다음을 만족하면 $T$는 배열이다.
+- 모든 성분의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ ($\top$은 VEL 타입 시스템 1.2절을 따른다)
+- 모든 성분의 스칼라 타입이 같다: $\mathbb K_1 = \cdots = \mathbb K_N = \mathbb K$
+
+$$ T \mapsto \mathrm{Array}(N, \mathbf d, \langle\mathbb K\rangle_{R_1 \sqcup \cdots \sqcup R_N}) $$
+
+즉 성분의 모양 앞에 크기 $N$인 차원을 붙인다. 성분 $i$는 첫 인덱스가 $i$인 부분 $T[i, \cdots]$다. 해상도가 서로 다르면 넓은 쪽($\sqcup$)을 따른다. 위 조건을 만족하지 않는 객체는 배열이 아니다.
+- 성분이 스칼라면 $\mathrm{Array}(N) = \mathrm{Vec}(N)$이다.
+- 성분이 길이 $M$인 벡터면 $\mathrm{Array}(N, M, 1) = \mathrm{Mat}(N, M)$이다. 성분 $i$는 $i$번째 행이다.
+- 성분이 행렬이면 3차원 배열이 된다.
+
+| $T$ | 성분 | VEL 타입 |
+| --- | --- | --- |
+| `record P(double x, double y)` | $F(64)$, $F(64)$ | $\mathrm{Vec}(2, F(64))$ |
+| `record Q(int a, double b)` | $Z(32)$, $F(64)$ | $\mathrm{Vec}(2, F(64))$ |
+| `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\mathrm{Vec}(3)$, $\mathrm{Vec}(3)$ | $\mathrm{Mat}(2, 3, F(64))$ |
+| `record S(double[] u, double[] v)` | $\mathrm{Vec}(\top)$, $\mathrm{Vec}(\top)$ | $\mathrm{Mat}(2, \top, F(64))$ |
+| `record B(int a, boolean b)` | $\mathrm{Real}$, $\mathrm{Bool}$ | 배열이 아님 |
+
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
 정적 메소드와 함수형 인터페이스의 유일한 함수의 모든 인자 타입과 반환 타입이 VEL로 변환 가능하다면 VEL의 함수 타입으로 취급한다.
 
@@ -117,7 +141,7 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). 따라서 Java에서 넘�
 VEL의 불변성은 VEL 값에만 해당한다. 호출한 Java 메서드가 객체의 상태를 바꾸는 부수 효과는 막지 않는다.
 
 ## 4. 이름
-VEL은 Java의 지역 변수, 매개변수, 필드를 이름 그대로 참조한다. VEL 식별자는 Java 식별자와 같은 문자 집합을 쓰며, 예약어는 Java 예약어이기도 한 `return`, `true`, `false`뿐이다.
+VEL은 Java의 지역 변수, 매개변수, 필드를 이름 그대로 참조한다. VEL 식별자는 Java 식별자와 같은 문자 집합을 쓴다. VEL의 예약어는 `return`, `true`, `false`, `if`, `else`, `then`이며, `then`을 뺀 나머지는 Java 예약어이기도 하다. `then`이라는 Java 변수는 `` `then` ``으로 쓴다.
 
 VEL이 미리 선언한 이름은 같은 이름의 Java 변수보다 **우선한다**. Java 변수를 가리키려면 Kotlin처럼 이름을 백틱으로 감싼다.
 
@@ -134,6 +158,18 @@ VEL이 미리 선언한 이름은 같은 이름의 Java 변수보다 **우선한
 
 ## 5. VEL 밖으로 나가는 값
 `return` 값이나 Java 변수에 저장되는 값은 대상 Java 타입의 해상도로 변환된다(VEL 타입 시스템 3.2절). 대상의 해상도가 더 낮으면 손실을 허용한다. 예: VEL에서 $D(\infty)$로 계산한 결과를 `double`을 반환하는 `@Vel` 메서드에서 돌려주면 `double`로 반올림된다.
+
+대상 타입이 **성분 객체**(2.5절)면, VEL 값을 성분별로 나눠 그 객체로 감싼다.
+- VEL 값 $V$의 모양은 $T$의 VEL 타입과 맞아야 한다.
+- 성분 $V[0, \cdots], \cdots, V[N-1, \cdots]$를 각 성분 타입으로 변환한 뒤, 성분 순서대로 받는 생성자로 $T$를 만든다. `record`는 표준 생성자, Kotlin `Pair`, `Triple`, data class는 주 생성자를 쓴다.
+- 그런 생성자가 없는 타입으로는 내보낼 수 없다.
+
+```java
+record Point(double x, double y) {}
+
+@Vel("(-p[1], p[0])")        // Point는 Vec(2, F(64))이므로 성분을 인덱스로 읽는다
+Point rotate90(Point p);     // 결과 Vec(2, F(64))를 new Point(…, …)로 감싼다
+```
 
 ## 6. Java 문자열 안의 VEL
 `@Vel("...")`과 `vel("...")`의 VEL 코드는 Java 문자열 리터럴이므로 Java의 이스케이프 규칙이 먼저 적용된다. 백슬래시와 큰따옴표는 Java 문자열 규칙대로 써야 한다. 텍스트 블록(`"""..."""`)을 쓰면 여러 줄을 그대로 쓸 수 있다.

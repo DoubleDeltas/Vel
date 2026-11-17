@@ -27,6 +27,7 @@ grammar Vel;
             case DOT_PLUS_ASSIGN: case DOT_MINUS_ASSIGN: case DOT_STAR_ASSIGN: case DOT_SLASH_ASSIGN:
             case DOT_CARET_ASSIGN:
             case COMMA: case COLON: case DOT:
+            case IF: case THEN: case ELSE:
                 return true;
             default:
                 return false;
@@ -129,6 +130,9 @@ expr
     | expr op=('*' | '/' | '/>' | '/<' | '//' | '///' | '%%' | '%%%' | '.*' | './') expr  # mulExpr
     | expr op=('+' | '-' | '.+' | '.-' | 'o+') expr         # addExpr
     | expr ':' expr                                         # rangeExpr
+    // Conditional expression, the lowest precedence: the else branch extends as far as possible.
+    // Only the chosen branch is evaluated. Line breaks before `then` and `else` are allowed.
+    | 'if' expr NEWLINE* 'then' expr NEWLINE* 'else' expr   # conditionalExpr
     ;
 
 primary
@@ -159,7 +163,8 @@ index
 /**
  * Row-major literal: `[1, 2, 3]` is a 1x3 row vector, `[1, 2; 3, 4]` is a 2x2 matrix.
  * Elements may themselves be matrices (block matrix): `[A, B; C, D]`.
- * A column vector is written as a tuple: `(x, y, z)` == `[x; y; z]` (3x1).
+ * A tuple stacks its items along a new first dimension: `(x, y, z)` of scalars is the 3x1 column
+ * `[x; y; z]`, `(u, v)` of vectors of length n is a 2xn matrix with u and v as rows.
  * `(x)` is just a parenthesized expression, not a 1-element tuple.
  */
 matrixRow
@@ -172,7 +177,8 @@ matrixRow
 // Every operator / punctuation has a named token so lexer actions can refer to it.
 // String literals used in parser rules (e.g. '+') resolve to these named tokens.
 //
-// Only Java keywords are reserved (`return`, `true`, `false`), so every Java identifier can be
+// Reserved words are `return`, `true`, `false`, `if`, `else` (all Java keywords) and `then` (the only
+// one that is not; a Java variable named then must be written in backticks). Every other Java identifier can be
 // referenced by name. `end` (inside subscripts: the length of the dimension) and `j` (imaginary unit) are predeclared names,
 // lexed as ordinary identifiers and resolved by the semantic analysis. As in Kotlin, a name in
 // backticks (QUOTED_ID) bypasses the predeclared names: plain j is the imaginary unit, while
@@ -180,6 +186,9 @@ matrixRow
 // ---------------------------------------------------------------------------
 
 RETURN : 'return' ;
+IF     : 'if' ;
+THEN   : 'then' ;   // not a Java keyword: a Java variable named `then` is written in backticks
+ELSE   : 'else' ;
 TRUE   : 'true' ;
 FALSE  : 'false' ;
 

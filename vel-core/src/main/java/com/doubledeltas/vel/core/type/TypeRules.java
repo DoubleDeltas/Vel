@@ -72,6 +72,25 @@ public final class TypeRules {
         };
     }
 
+    /**
+     * Type of {@code if c then a else b}. The condition is a Bool scalar; only the chosen branch is
+     * evaluated. The result has the common type of the branches: the same shape (⊤ follows
+     * type-system.md 1.2), field ∨ and resolution ⊔ of the elements.
+     */
+    public static ArrayType conditional(ArrayType condition, ArrayType then, ArrayType otherwise) {
+        if (!condition.isScalar() || condition.element().field() != Field.BOOL) {
+            throw new VelTypeException("condition of if must be a Bool scalar, not " + condition);
+        }
+        int rank = Math.max(then.rank(), otherwise.rank());
+        List<Card> dims = new ArrayList<>(rank);
+        for (int i = 0; i < rank; i++) {
+            Card a = i < then.rank() ? then.dims().get(i) : Card.ONE;
+            Card b = i < otherwise.rank() ? otherwise.dims().get(i) : Card.ONE;
+            dims.add(Shapes.unify(a, b, "branches of if have different shapes, " + then + " and " + otherwise + ":"));
+        }
+        return new ArrayType(dims, join(then.element(), otherwise.element()));
+    }
+
     /** Type of {@code -a} or {@code +a}. */
     public static ArrayType unary(ArrayType a, boolean minus) {
         ScalarType e = a.element();
@@ -111,9 +130,38 @@ public final class TypeRules {
         return result;
     }
 
-    /** Type of a tuple {@code (A₁, …, Aₖ)} = {@code [A₁; …; Aₖ]}. */
+    /**
+     * Type of a tuple {@code (A₁, …, Aₖ)}: the items are <em>stacked</em> along a new first dimension.
+     * All items have the same shape {@code 𝐝} and the result is {@code Array(k, 𝐝)}, item {@code i}
+     * being {@code T[i, …]}. Scalars give {@code Vec(k)}, vectors of length M give {@code Mat(k, M)}
+     * (item i is row i). The same rule maps component objects such as {@code Pair} (java.md 2.5).
+     */
     public static ArrayType tuple(List<ArrayType> items) {
-        return matrix(items.stream().map(List::of).toList());
+        if (items.isEmpty()) {
+            throw new VelTypeException("empty tuple");
+        }
+        List<Card> shape = items.getFirst().dims();
+        ScalarType element = items.getFirst().element();
+        for (ArrayType item : items.subList(1, items.size())) {
+            shape = unifyShapes(shape, item.dims(), "items of a tuple have different shapes:");
+            element = join(element, item.element());
+        }
+        List<Card> dims = new ArrayList<>(shape.size() + 1);
+        dims.add(Card.of(items.size()));
+        dims.addAll(shape);
+        return new ArrayType(dims, element);
+    }
+
+    /** Two shapes that must agree dimension by dimension (missing trailing dimensions are 1). */
+    private static List<Card> unifyShapes(List<Card> a, List<Card> b, String what) {
+        int rank = Math.max(a.size(), b.size());
+        List<Card> dims = new ArrayList<>(rank);
+        for (int i = 0; i < rank; i++) {
+            Card x = i < a.size() ? a.get(i) : Card.ONE;
+            Card y = i < b.size() ? b.get(i) : Card.ONE;
+            dims.add(Shapes.unify(x, y, what + " " + a + " vs " + b + ":"));
+        }
+        return dims;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -142,9 +190,13 @@ public final class TypeRules {
      * Type of {@code a[s₁, …, sₖ]}.
      * <p>
      * Without partitions it is the selected region. With a partition {@code a₀:…:aₖ} on a matrix it is
-     * the block tensor {@code Array(h, w, k, l)}: block {@code (i, j)} is {@code T[:, :, i, j]}, {@code k}
-     * and {@code l} are the numbers of row and column blocks, and {@code h}, {@code w} the block sizes
-     * (⊤ when the blocks differ in size; the missing positions of smaller blocks are null).
+     * a block tensor: the blocks are stacked like the items of a tuple, the block indices first.
+     * <ul>
+     *   <li>rows and columns partitioned: {@code Array(k, l, h, w)}, block {@code (i, j)} is {@code T[i, j, :, :]}</li>
+     *   <li>only the rows (or only the columns) partitioned: {@code Array(k, h, w)}, block {@code i} is {@code T[i, :, :]}</li>
+     * </ul>
+     * {@code k}, {@code l} are the numbers of row and column blocks and {@code h}, {@code w} the block
+     * sizes (⊤ when the blocks differ in size; the missing positions of smaller blocks are null).
      */
     public static ArrayType index(ArrayType a, List<Subscript> subscripts) {
         List<Selection> sel = selections(a, subscripts);
@@ -154,7 +206,15 @@ public final class TypeRules {
         if (sel.size() != 2) {
             throw new VelTypeException("partitioned indexing is defined for matrices, not " + a);
         }
-        return a.withDims(List.of(sel.get(0).size(), sel.get(1).size(), sel.get(0).blocks(), sel.get(1).blocks()));
+        List<Card> dims = new ArrayList<>(4);
+        for (Selection s : sel) {
+            if (!s.blocks().isOne()) {
+                dims.add(s.blocks());
+            }
+        }
+        dims.add(sel.get(0).size());
+        dims.add(sel.get(1).size());
+        return a.withDims(dims);
     }
 
     /**
@@ -179,29 +239,32 @@ public final class TypeRules {
     }
 
     /**
-     * Destructuring assignment {@code [t₁₁, …; …] = value} with a pattern of {@code rows × cols} items
-     * (a tuple pattern of k items is k × 1). Returns the type each target receives.
-     * <ul>
-     *   <li>A matrix value is split into elements: it must be {@code rows × cols}, each target gets a scalar.</li>
-     *   <li>A block tensor {@code Array(h, w, k, l)} (rank 3 or 4, see {@link #index}) is split into
-     *       blocks: {@code k × l} must be {@code rows × cols}, each target gets a {@code Mat(h, w)}.</li>
-     * </ul>
+     * Tuple pattern {@code (t₁, …, tₖ) = value}: the value is split along its first dimension, which
+     * must be {@code k}; each target gets the rest, {@code value[i, …]}. This undoes a tuple or a
+     * component object: {@code (x, y) = (1, 2)} gives scalars, {@code (u, v) = M} with
+     * {@code M : Mat(2, n)} gives {@code Vec(n)} rows, {@code (Top, Bottom) = M[0:3:6, :]} gives blocks.
      * ⊤ sizes follow type-system.md 1.2.
      */
-    public static ArrayType destructure(ArrayType value, int rows, int cols) {
+    public static ArrayType destructureTuple(ArrayType value, int k) {
+        String what = "cannot destructure " + value + " into a tuple pattern of " + k + ":";
+        List<Card> d = value.dims();
+        Shapes.unify(d.getFirst(), Card.of(k), what);
+        return new ArrayType(d.subList(1, d.size()), value.element());
+    }
+
+    /**
+     * Matrix pattern {@code [t₁₁, …; …] = value} of {@code rows × cols} items: the value is split along
+     * its first two dimensions, which must be {@code rows × cols}; each target gets the rest,
+     * {@code value[i, j, …]}. A matrix is split into its elements (scalars), a block tensor
+     * {@code Array(k, l, h, w)} into its blocks {@code Mat(h, w)}.
+     */
+    public static ArrayType destructureMatrix(ArrayType value, int rows, int cols) {
         String what = "cannot destructure " + value + " into a " + rows + "x" + cols + " pattern:";
         List<Card> d = value.dims();
-        if (value.isMatrix()) {
-            Shapes.unify(d.get(0), Card.of(rows), what);
-            Shapes.unify(d.get(1), Card.of(cols), what);
-            return ArrayType.scalar(value.element());
-        }
-        if (value.rank() <= 4) {
-            Shapes.unify(d.get(2), Card.of(rows), what);
-            Shapes.unify(value.rank() == 4 ? d.get(3) : Card.ONE, Card.of(cols), what);
-            return ArrayType.mat(d.get(0), d.get(1), value.element());
-        }
-        throw new VelTypeException(what + " rank " + value.rank() + " is too high");
+        Shapes.unify(d.get(0), Card.of(rows), what);
+        Shapes.unify(d.get(1), Card.of(cols), what);
+        List<Card> rest = d.subList(2, d.size());
+        return rest.isEmpty() ? ArrayType.scalar(value.element()) : new ArrayType(rest, value.element());
     }
 
     /**

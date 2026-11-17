@@ -86,7 +86,32 @@ Java 매핑 2.2절, 2.3절과 같다.
 ### 2.3. 불변성
 VEL 값은 불변이다(VEL 타입 시스템 1.5절). Kotlin에서 넘겨받은 배열과 `MutableList`는 VEL이 수정하지 않는다(Java 매핑 2.4절).
 
-## 3. 함수
+## 3. Kotlin 구조분해
+연산자 `component1()`, …, `componentN()`을 참조할 수 있는 객체(예: `Pair`, `Triple`, data class)는 **성분 객체**이며, Java 매핑 2.5절의 규칙으로 배열이 된다.
+
+각 성분 타입 $C_i \mapsto \mathrm{Array}(\mathbf d_i, \langle\mathbb K_i\rangle_{R_i})$의 모양 $\mathbf d_i$와 스칼라 타입 $\mathbb K_i$가 모두 같으면
+
+$$ T \mapsto \mathrm{Array}(N, \mathbf d, \langle\mathbb K\rangle_{R_1 \sqcup \cdots \sqcup R_N}) $$
+
+이다. 성분이 스칼라 $F$면 $\mathrm{Vec}(N, F)$, 길이 $M$인 벡터면 $\mathrm{Mat}(N, M, F)$(성분 $i$가 $i$번째 행)다. 해상도가 다르면 넓은 쪽을 따른다.
+
+| Kotlin 타입 | VEL 타입 |
+| --- | --- |
+| `Pair<Double, Double>` | $\mathrm{Vec}(2, F(64))$ |
+| `Pair<Int, Double>` | $\mathrm{Vec}(2, F(64))$ |
+| `Triple<Float, Float, Float>` | $\mathrm{Vec}(3, F(32))$ |
+| `Pair<DoubleArray, DoubleArray>` | $\mathrm{Mat}(2, \top, F(64))$ |
+| `data class V(val x: Double, val y: Double, val z: Double)` | $\mathrm{Vec}(3, F(64))$ |
+| `Pair<Int, Boolean>` | 배열이 아님 (스칼라 타입이 다름) |
+
+반대로 VEL 값이 성분 객체 타입으로 나갈 때는 성분별로 나눠 그 객체로 감싼다(Java 매핑 5절).
+
+```kotlin
+fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
+// VEL 값 Vec(2, F(64))를 Pair(-y, x)로 감싼다
+```
+
+## 4. 함수
 다음은 모든 인자 타입과 반환 타입이 VEL로 변환 가능하다면 VEL의 함수 타입으로 취급한다.
 - 함수 타입 `(A, B) -> R`과 람다
 - `fun interface`의 유일한 추상 함수
@@ -105,16 +130,16 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). Kotlin에서 넘겨받은 
 
 VEL의 불변성은 VEL 값에만 해당한다. 호출한 Kotlin 함수의 부수 효과는 막지 않는다.
 
-## 4. 이름
+## 5. 이름
 VEL은 Kotlin의 지역 변수, 매개변수, 속성을 이름 그대로 참조한다.
 
-VEL의 예약어 `return`, `true`, `false`는 Kotlin의 하드 키워드이기도 하다. 따라서 백틱 없이 선언된 Kotlin 이름은 모두 VEL에서 그대로 쓸 수 있다.
+VEL의 예약어 중 `return`, `true`, `false`, `if`, `else`는 Kotlin의 하드 키워드이기도 하다. `then`은 Kotlin에서 일반 이름이므로, `then`이라는 Kotlin 변수는 VEL에서 `` `then` ``으로 쓴다. 그 밖의 백틱 없이 선언된 Kotlin 이름은 모두 VEL에서 그대로 쓸 수 있다.
 
 미리 선언된 이름(`j`, `end`)은 Java 매핑 4절과 같이 같은 이름의 Kotlin 변수보다 우선하며, Kotlin 변수는 백틱으로 쓴다(`` `j` ``).
 
 VEL의 백틱 안에는 Java 식별자만 올 수 있다. 그래서 Kotlin에서 백틱으로 선언한 이름 중 Java 식별자가 아닌 것(예: `` `my value` ``)은 VEL에서 참조할 수 없다.
 
-## 5. 연산자 대응
+## 6. 연산자 대응
 Kotlin 코드를 VEL로 옮길 때 나눗셈 계열은 다음과 같이 대응한다.
 
 | Kotlin | VEL | 반올림 방향 |
