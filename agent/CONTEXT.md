@@ -230,5 +230,6 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 벡터 값은 `\mathbf`로 쓴다 (예: $\mathbf d$, $\mathbf v$). `\vec`, `\boldsymbol` 등은 쓰지 않는다.
   - 타입 이름은 `\mathrm` (예: $\mathrm{Vec}$, $\mathrm{Real}$)
   - 체 변수는 `\mathbb` (예: $\mathbb K$)
+  - 해상도 표기 `⟨T⟩_R`은 일반 타입에도 쓴다: `⟨Array(𝐝, K)⟩_R := Array(𝐝, ⟨K⟩_R)`. 예: `⟨Vec(3, Real)⟩_F(64)`. `Vec(2, F(64))`처럼 스칼라 자리에 해상도만 쓰지 않는다. 해상도가 주제가 아닌 곳(`@Dim` 표 등)에서는 `Vec(3, Real)`처럼 해상도를 생략한다.
 - 줄바꿈은 LF로 고정한다(`.gitattributes`). 예외로 `*.bat`, `*.cmd`는 CRLF.
 - 커밋은 사용자가 요청할 때만 한다. 원격은 `origin` = https://github.com/DoubleDeltas/Vel.git, 작업 브랜치는 `master`.

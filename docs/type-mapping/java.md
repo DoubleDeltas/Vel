@@ -77,13 +77,13 @@ Java 배열과 `List`의 길이는 컴파일 타임에 알 수 없으므로, 각
 
 | Java 선언 | VEL 타입 |
 | --- | --- |
-| `double[] v` | $\mathrm{Vec}(\top, F)$ |
-| `@Dim(3) double[] v` | $\mathrm{Vec}(3, F)$ |
-| `@Dim({3, 4}) double[][] m` | $\mathrm{Mat}(3, 4, F)$ |
-| `@Dim(java = 3) double[] v` | $\mathrm{Vec}(3, F)$ |
-| `@Dim(java = {4, 3}) double[][] m` | $\mathrm{Mat}(3, 4, F)$ |
-| `@Dim(vel = {3, 4}) double[][] m` | $\mathrm{Mat}(3, 4, F)$ (위와 같음) |
-| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\mathrm{Mat}(3, \top, F)$ |
+| `double[] v` | $\mathrm{Vec}(\top, \mathrm{Real})$ |
+| `@Dim(3) double[] v` | $\mathrm{Vec}(3, \mathrm{Real})$ |
+| `@Dim({3, 4}) double[][] m` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ |
+| `@Dim(java = 3) double[] v` | $\mathrm{Vec}(3, \mathrm{Real})$ |
+| `@Dim(java = {4, 3}) double[][] m` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ |
+| `@Dim(vel = {3, 4}) double[][] m` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ (위와 같음) |
+| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\mathrm{Mat}(3, \top, \mathrm{Real})$ |
 
 `@Dim`은 매개변수, 필드, 지역 변수, 메서드(반환값)에 붙일 수 있다.
 - 지정한 크기는 신뢰하며 런타임에 검사하지 않는다.
@@ -123,10 +123,10 @@ $$ T \mapsto \mathrm{Array}(N, \mathbf d, \langle\mathbb K\rangle_{R_1 \sqcup \c
 
 | $T$ | 성분 | VEL 타입 |
 | --- | --- | --- |
-| `record P(double x, double y)` | $F(64)$, $F(64)$ | $\mathrm{Vec}(2, F(64))$ |
-| `record Q(int a, double b)` | $Z(32)$, $F(64)$ | $\mathrm{Vec}(2, F(64))$ |
-| `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\mathrm{Vec}(3)$, $\mathrm{Vec}(3)$ | $\mathrm{Mat}(2, 3, F(64))$ |
-| `record S(double[] u, double[] v)` | $\mathrm{Vec}(\top)$, $\mathrm{Vec}(\top)$ | $\mathrm{Mat}(2, \top, F(64))$ |
+| `record P(double x, double y)` | $\langle\mathrm{Real}\rangle_F(64)$, $\langle\mathrm{Real}\rangle_F(64)$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_F(64)$ |
+| `record Q(int a, double b)` | $\langle\mathrm{Real}\rangle_Z(32)$, $\langle\mathrm{Real}\rangle_F(64)$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_F(64)$ |
+| `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\mathrm{Vec}(3)$, $\mathrm{Vec}(3)$ | $\langle\mathrm{Mat}(2, 3, \mathrm{Real})\rangle_F(64)$ |
+| `record S(double[] u, double[] v)` | $\mathrm{Vec}(\top)$, $\mathrm{Vec}(\top)$ | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_F(64)$ |
 | `record B(int a, boolean b)` | $\mathrm{Real}$, $\mathrm{Bool}$ | 배열이 아님 |
 
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
@@ -167,8 +167,8 @@ VEL이 미리 선언한 이름은 같은 이름의 Java 변수보다 **우선한
 ```java
 record Point(double x, double y) {}
 
-@Vel("(-p[1], p[0])")        // Point는 Vec(2, F(64))이므로 성분을 인덱스로 읽는다
-Point rotate90(Point p);     // 결과 Vec(2, F(64))를 new Point(…, …)로 감싼다
+@Vel("(-p[1], p[0])")        // Point는 ⟨Vec(2, Real)⟩_F(64)이므로 성분을 인덱스로 읽는다
+Point rotate90(Point p);     // 결과 ⟨Vec(2, Real)⟩_F(64)를 new Point(…, …)로 감싼다
 ```
 
 ## 6. Java 문자열 안의 VEL

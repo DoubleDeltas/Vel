@@ -65,13 +65,13 @@ Kotlin에서는 `value` 인자를 가변 인자처럼 `@Dim(3, 4)`로, 이름 �
 
 | Kotlin 선언 | VEL 타입 |
 | --- | --- |
-| `v: DoubleArray` | $\mathrm{Vec}(\top, F)$ |
-| `@Dim(3) v: DoubleArray` | $\mathrm{Vec}(3, F)$ |
-| `@Dim(3, 4) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ |
-| `@Dim(java = [3]) v: DoubleArray` | $\mathrm{Vec}(3, F)$ |
-| `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ |
-| `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ (위와 같음) |
-| `@Dim(java = [Dim.TOP, 3]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, \top, F)$ |
+| `v: DoubleArray` | $\mathrm{Vec}(\top, \mathrm{Real})$ |
+| `@Dim(3) v: DoubleArray` | $\mathrm{Vec}(3, \mathrm{Real})$ |
+| `@Dim(3, 4) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ |
+| `@Dim(java = [3]) v: DoubleArray` | $\mathrm{Vec}(3, \mathrm{Real})$ |
+| `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ |
+| `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, \mathrm{Real})$ (위와 같음) |
+| `@Dim(java = [Dim.TOP, 3]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, \top, \mathrm{Real})$ |
 
 `@Dim`은 Java 어노테이션이므로 Kotlin 속성에 붙일 때는 적용 대상을 밝히는 것을 권장한다.
 - 생성자 매개변수: `@param:Dim(...)`
@@ -97,18 +97,18 @@ $$ T \mapsto \mathrm{Array}(N, \mathbf d, \langle\mathbb K\rangle_{R_1 \sqcup \c
 
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
-| `Pair<Double, Double>` | $\mathrm{Vec}(2, F(64))$ |
-| `Pair<Int, Double>` | $\mathrm{Vec}(2, F(64))$ |
-| `Triple<Float, Float, Float>` | $\mathrm{Vec}(3, F(32))$ |
-| `Pair<DoubleArray, DoubleArray>` | $\mathrm{Mat}(2, \top, F(64))$ |
-| `data class V(val x: Double, val y: Double, val z: Double)` | $\mathrm{Vec}(3, F(64))$ |
+| `Pair<Double, Double>` | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_F(64)$ |
+| `Pair<Int, Double>` | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_F(64)$ |
+| `Triple<Float, Float, Float>` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_F(32)$ |
+| `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_F(64)$ |
+| `data class V(val x: Double, val y: Double, val z: Double)` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_F(64)$ |
 | `Pair<Int, Boolean>` | 배열이 아님 (스칼라 타입이 다름) |
 
 반대로 VEL 값이 성분 객체 타입으로 나갈 때는 성분별로 나눠 그 객체로 감싼다(Java 매핑 5절).
 
 ```kotlin
 fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
-// VEL 값 Vec(2, F(64))를 Pair(-y, x)로 감싼다
+// VEL 값 ⟨Vec(2, Real)⟩_F(64)를 Pair(-y, x)로 감싼다
 ```
 
 ## 4. 함수

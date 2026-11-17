@@ -152,6 +152,12 @@ $$ M[\mathbf a, \mathbf b] : \mathrm{Array}(k, l, h, w, F) $$
 
 구체적인 매핑은 `./type-mapping`에 둔다.
 
+해상도 표기 $\langle T \rangle_R$은 스칼라 타입뿐 아니라 **일반 타입** $T$에도 쓴다. 배열 타입에 붙이면 모든 원소에 그 해상도를 준다.
+$$ \langle \mathrm{Array}(\mathbf d, \mathbb K) \rangle_R := \mathrm{Array}(\mathbf d, \langle\mathbb K\rangle_R) $$
+예: $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_F(64) = \mathrm{Vec}(3, \langle\mathrm{Real}\rangle_F(64))$는 원소가 64비트 부동소수인 실수 3차원 벡터다(Java `@Dim(3) double[]`).
+
+해상도가 주제가 아닌 곳에서는 $\mathrm{Vec}(3, \mathrm{Real})$처럼 해상도를 생략해 쓸 수 있다.
+
 ## 3. 해상도 승격 (Promotion)
 이 장에서 $Z(n)$, $Z^+(n)$, $F(n)$, $D(n)$, $D(\infty)$는 각각 $\langle\mathbb K\rangle_{Z}(n)$, $\langle\mathbb K\rangle_{Z+}(n)$, $\langle\mathbb K\rangle_{F}(n)$, $\langle\mathbb K\rangle_{D}(n)$, $\langle\mathbb K\rangle_{D}(\infty)$의 줄임이다.
 스칼라 타입(체) $\mathbb K$와 해상도는 독립적으로 승격한다.
