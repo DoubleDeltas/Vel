@@ -51,7 +51,7 @@ public sealed interface Resolution {
         }
     }
 
-    /** Z(n) when signed, Z+(n) when unsigned. Overflow wraps around. */
+    /** Zn when signed, Z+n when unsigned. Overflow wraps around. */
     record FixedInt(int bits, boolean signed) implements Resolution {
         public FixedInt {
             if (bits <= 0) {
@@ -61,19 +61,19 @@ public sealed interface Resolution {
 
         @Override
         public String toString() {
-            return (signed ? "Z(" : "Z+(") + bits + ")";
+            return (signed ? "Z" : "Z+") + bits;
         }
     }
 
-    /** Z(∞) */
+    /** Z∞ */
     record BigInt() implements Resolution {
         @Override
         public String toString() {
-            return "Z(∞)";
+            return "Z∞";
         }
     }
 
-    /** F(n): IEEE 754 binary floating point. */
+    /** Fn: IEEE 754 binary floating point. */
     record BinaryFloat(int bits) implements Resolution {
         public BinaryFloat {
             significandBits(bits); // validates
@@ -96,11 +96,11 @@ public sealed interface Resolution {
 
         @Override
         public String toString() {
-            return "F(" + bits + ")";
+            return "F" + bits;
         }
     }
 
-    /** D(n): IEEE 754 decimal floating point. */
+    /** Dn: IEEE 754 decimal floating point. */
     record DecimalFloat(int bits) implements Resolution {
         public DecimalFloat {
             decimalDigits(bits); // validates
@@ -122,15 +122,15 @@ public sealed interface Resolution {
 
         @Override
         public String toString() {
-            return "D(" + bits + ")";
+            return "D" + bits;
         }
     }
 
-    /** D(∞) */
+    /** D∞ */
     record BigDecimalRes() implements Resolution {
         @Override
         public String toString() {
-            return "D(∞)";
+            return "D∞";
         }
     }
 
@@ -157,7 +157,7 @@ public sealed interface Resolution {
 
     /**
      * An exact constant that is not a finite decimal, such as {@code 1/3}, produced by folding
-     * literal arithmetic. Behaves like a decimal literal; only D(∞) (kept as a fraction) holds it exactly.
+     * literal arithmetic. Behaves like a decimal literal; only D∞ (kept as a fraction) holds it exactly.
      *
      * @param numerator   any integer
      * @param denominator greater than 1, coprime with the numerator, with a prime factor other than 2 and 5
@@ -173,12 +173,12 @@ public sealed interface Resolution {
         return this instanceof IntLiteral || this instanceof DecimalLiteral || this instanceof RationalLiteral;
     }
 
-    /** Z(n), Z+(n) or Z(∞) (literals excluded). */
+    /** Zn, Z+n or Z∞ (literals excluded). */
     default boolean isInteger() {
         return this instanceof FixedInt || this instanceof BigInt;
     }
 
-    /** F(n), D(n) or D(∞). */
+    /** Fn, Dn or D∞. */
     default boolean isFloating() {
         return this instanceof BinaryFloat || this instanceof DecimalFloat || this instanceof BigDecimalRes;
     }

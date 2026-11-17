@@ -86,7 +86,7 @@ class TypeRulesTest {
 
     @Test
     void elementWiseOperatorsBroadcastAndJoin() {
-        // Vec(3, F(32)) .* Mat(1, 2, F(64)) : Mat(3, 2, F(64))
+        // Vec(3, F32) .* Mat(1, 2, F64) : Mat(3, 2, F64)
         ArrayType r = TypeRules.binary(EW_MUL, ArrayType.vec(n(3), F32), mat(n(1), n(2)));
         assertEquals(ArrayType.mat(n(3), n(2), F64), r);
         // .^ with an integer literal exponent keeps the base resolution
@@ -109,7 +109,7 @@ class TypeRulesTest {
     @Test
     void matrixDivisionAndPower() {
         ArrayType intMat = ArrayType.mat(n(2), n(2), I32);
-        // A / B = A · B⁻¹: integers become F(64)
+        // A / B = A · B⁻¹: integers become F64
         assertEquals(ArrayType.mat(n(3), n(2), F64), TypeRules.binary(DIV, ArrayType.mat(n(3), n(2), I32), intMat));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(DIV, mat(n(3), n(2)), mat(n(2), n(3))));
         // matrix / scalar is element-wise; integer / integer is true division
@@ -185,10 +185,10 @@ class TypeRulesTest {
 
     @Test
     void scalarLiteralsFormMatricesAndTuplesFormColumns() {
-        // [1, 2; 3, 4] : Mat(2, 2, Z(32))
+        // [1, 2; 3, 4] : Mat(2, 2, Z32)
         assertEquals(ArrayType.mat(n(2), n(2), I32),
                 TypeRules.matrix(List.of(List.of(lit(1), lit(2)), List.of(lit(3), lit(4)))));
-        // [1, x] with x: F(32) -> F(32)
+        // [1, x] with x: F32 -> F32
         assertEquals(ArrayType.mat(n(1), n(2), F32),
                 TypeRules.matrix(List.of(List.of(lit(1), ArrayType.scalar(F32)))));
         // (x, y, z) = [x; y; z] : Vec(3)
@@ -243,7 +243,7 @@ class TypeRulesTest {
     void indexAssignmentWidensTheVariable() {
         ArrayType ints = ArrayType.mat(n(2), n(3), I32);
         Subscript first = Subscript.at(lit(0));
-        // m[0, 0] = 5 keeps Z(32); m[0, 0] = 0.5 widens the whole array to F(64)
+        // m[0, 0] = 5 keeps Z32; m[0, 0] = 0.5 widens the whole array to F64
         assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, first), lit(5)));
         ArrayType half = ArrayType.scalar(ScalarType.literal(new BigDecimal("0.5")));
         assertEquals(ArrayType.mat(n(2), n(3), F64), TypeRules.indexAssign(ints, List.of(first, first), half));
@@ -259,10 +259,10 @@ class TypeRulesTest {
 
     @Test
     void destructuring() {
-        // (x, y, z) = (1, 2, 3): each target is a Z(32) scalar
+        // (x, y, z) = (1, 2, 3): each target is a Z32 scalar
         ArrayType value = TypeRules.tuple(List.of(lit(1), lit(2), lit(3)));
         assertEquals(ArrayType.scalar(I32), TypeRules.destructureTuple(value, 3));
-        // [a, b; c, d] = M with M: Mat(2, 2, F(64)): elements
+        // [a, b; c, d] = M with M: Mat(2, 2, F64): elements
         assertEquals(ArrayType.scalar(F64), TypeRules.destructureMatrix(mat(n(2), n(2)), 2, 2));
         // (u, v) = M with M: Mat(2, 3): the rows, as Vec(3) (undoes the stacking of a tuple)
         assertEquals(ArrayType.vec(n(3), F64), TypeRules.destructureTuple(mat(n(2), n(3)), 2));
@@ -346,7 +346,7 @@ class TypeRulesTest {
     @Test
     void conditional() {
         ArrayType cond = ArrayType.scalar(ScalarType.BOOL);
-        // branches join: Z(32) and F(32) -> F(32); literals follow their partner
+        // branches join: Z32 and F32 -> F32; literals follow their partner
         assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, ArrayType.scalar(I32), ArrayType.scalar(F32)));
         assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, lit(1), ArrayType.scalar(F32)));
         // shapes must agree; ⊤ follows the usual rule

@@ -1,7 +1,8 @@
 package com.doubledeltas.vel.core.type;
 
 /**
- * Scalar type (the "field" of type-system.md 1.1): decides what the arithmetic means.
+ * Scalar field (type-system.md 0.2, 1.1): the atomic field that decides what the arithmetic means.
+ * A scalar field has no resolution; with one it becomes a {@link ScalarType}.
  * {@code Real <: Complex}; {@code Bool} is unrelated to both.
  */
 public enum Field {

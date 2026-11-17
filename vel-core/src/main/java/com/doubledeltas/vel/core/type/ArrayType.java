@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * {@code Array(d₁, …, dₙ, F)} (type-system.md 1).
+ * Array type {@code ⟨Array(d₁, …, dₙ, K)⟩_R}: the array field {@code Array(d₁, …, dₙ, K)} (type-system.md 1)
+ * with a resolution, i.e. the dimension sizes together with the element {@link ScalarType} {@code ⟨K⟩_R}.
+ * For example Java {@code double[]} is {@code ⟨Vec(⊤, Real)⟩_F64}.
  * <p>
  * Dimensions are kept in a canonical form so that the definitions in the type system hold by
  * equality: the rank is at least 2 (a rank-1 {@code Array(n)} is {@code Mat(n, 1)} = {@code Vec(n)}),

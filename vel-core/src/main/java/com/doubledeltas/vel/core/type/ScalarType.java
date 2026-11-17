@@ -4,7 +4,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 
 /**
- * Element type of an array: a scalar type (field) with a resolution, written {@code ⟨K⟩_R}.
+ * Scalar type {@code ⟨K⟩_R}: a scalar field {@code K} with a resolution {@code R} (type-system.md 0.2),
+ * e.g. {@code ⟨Real⟩_F64} for Java {@code double}. It is also the element type of an {@link ArrayType}.
  * {@code Bool} always has the {@code Bool} resolution, and numeric fields never do.
  */
 public record ScalarType(Field field, Resolution resolution) {

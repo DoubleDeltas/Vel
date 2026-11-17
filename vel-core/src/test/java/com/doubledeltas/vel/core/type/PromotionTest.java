@@ -106,9 +106,9 @@ class PromotionTest {
         assertEquals(BIG_DECIMAL, join(BIG_INT, FLOAT32));                         // 2
         assertEquals(BIG_DECIMAL, join(decimalFloat(32), BIG_INT));                // 2
         assertEquals(BIG_INT, join(BIG_INT, INT64));                               // 3
-        assertEquals(decimalFloat(64), join(decimalFloat(32), FLOAT64));           // 4: D(32) ⊔ F(64) = D(64)
+        assertEquals(decimalFloat(64), join(decimalFloat(32), FLOAT64));           // 4: D32 ⊔ F64 = D64
         assertEquals(decimalFloat(32), join(decimalFloat(32), INT64));             // 4: integer ignored
-        assertEquals(FLOAT32, join(INT64, FLOAT32));                               // 5: Z(64) ⊔ F(32) = F(32)
+        assertEquals(FLOAT32, join(INT64, FLOAT32));                               // 5: Z64 ⊔ F32 = F32
         assertEquals(FLOAT64, join(FLOAT32, FLOAT64));                             // 5
         assertEquals(INT64, join(INT32, INT64));                                   // 6
         assertEquals(unsigned(16), join(unsigned(8), unsigned(16)));               // 7
@@ -131,10 +131,10 @@ class PromotionTest {
 
     @Test
     void operatorExceptions() {
-        // unary minus on Z+(n) -> Z(n+1), widened
+        // unary minus on Z+n -> Z[n+1], widened
         assertEquals(INT32, Promotion.negate(unsigned(16), true));
         assertEquals(signed(33), Promotion.negate(unsigned(32), true));
-        // Z+ - Z+ -> Z(max + 1)
+        // Z+ - Z+ -> Z[max + 1]
         assertEquals(INT32, arithmetic(SUB, unsigned(16), unsigned(16)));     // char - char
         assertEquals(signed(65), arithmetic(SUB, unsigned(64), unsigned(8)));
         // integer / integer is true division
@@ -143,12 +143,12 @@ class PromotionTest {
         assertEquals(FLOAT32, arithmetic(DIV, FLOAT32, INT32));
         // quotient / remainder follow ⊔
         assertEquals(INT64, arithmetic(FLOOR_MOD, INT32, INT64));
-        // ^ with a non-negative integer literal keeps the base; anything else joins F(64)
+        // ^ with a non-negative integer literal keeps the base; anything else joins F64
         assertEquals(INT32, arithmetic(POW, signed(8), lit(2)));
         assertEquals(FLOAT64, arithmetic(POW, INT32, lit(-1)));
         assertEquals(FLOAT64, arithmetic(POW, FLOAT32, FLOAT32));
         assertEquals(BIG_DECIMAL, arithmetic(POW, BIG_INT, INT32));
-        // any other exponent: A ⊔ B ⊔ F(64), so the exponent's resolution counts
+        // any other exponent: A ⊔ B ⊔ F64, so the exponent's resolution counts
         assertEquals(decimalFloat(64), arithmetic(POW, INT32, decimalFloat(64)));
         assertEquals(BIG_DECIMAL, arithmetic(POW, FLOAT64, BIG_DECIMAL));
         assertEquals(BIG_DECIMAL, arithmetic(POW, INT32, BIG_INT));
@@ -169,10 +169,10 @@ class PromotionTest {
 
     @Test
     void literalsFollowTheirPartner() {
-        // 0.5 * x with x: F(32) stays F(32)
+        // 0.5 * x with x: F32 stays F32
         assertEquals(FLOAT32, arithmetic(MUL, lit("0.5"), FLOAT32));
         // an integer literal follows an integer partner when it fits
-        assertEquals(INT32, arithmetic(ADD, signed(8), lit(1)));          // widened from Z(8)
+        assertEquals(INT32, arithmetic(ADD, signed(8), lit(1)));          // widened from Z8
         assertEquals(INT64, arithmetic(ADD, INT64, lit(1)));
         // ... and uses its default when it doesn't
         assertEquals(INT64, arithmetic(ADD, signed(8), lit(1L << 40)));
@@ -217,10 +217,10 @@ class PromotionTest {
 
     @Test
     void foldedConstantsFollowTheirPartner() {
-        // 0.5 * 2 * x with x: F(32) -> F(32): the constant 1.0 is exact and follows x
+        // 0.5 * 2 * x with x: F32 -> F32: the constant 1.0 is exact and follows x
         Resolution one = arithmetic(MUL, lit("0.5"), lit(2));
         assertEquals(FLOAT32, arithmetic(MUL, one, FLOAT32));
-        // x * (1/3) with x: F(64) -> F(64); with x: D(∞) the fraction stays exact
+        // x * (1/3) with x: F64 -> F64; with x: D∞ the fraction stays exact
         Resolution third = arithmetic(DIV, lit(1), lit(3));
         assertEquals(FLOAT64, arithmetic(MUL, FLOAT64, third));
         assertEquals(BIG_DECIMAL, arithmetic(MUL, BIG_DECIMAL, third));

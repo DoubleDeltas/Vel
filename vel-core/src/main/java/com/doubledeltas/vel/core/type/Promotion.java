@@ -46,7 +46,7 @@ public final class Promotion {
                 return fits(lit.value(), b);
             }
             case RationalLiteral ignored -> {
-                return b instanceof BigDecimalRes; // D(∞) keeps fractions exactly
+                return b instanceof BigDecimalRes; // D∞ keeps fractions exactly
             }
             default -> {
             }
@@ -58,7 +58,7 @@ public final class Promotion {
             return false;
         }
         if (b instanceof BigDecimalRes) {
-            return true; // Z(n), Z+(n), Z(∞), F(n), D(n) ⊑ D(∞)
+            return true; // Zn, Z+n, Z∞, Fn, Dn ⊑ D∞
         }
         if (a instanceof FixedInt x) {
             return switch (b) {
@@ -265,7 +265,7 @@ public final class Promotion {
     /**
      * {@code A ^ B}: a non-negative integer literal exponent is repeated multiplication and keeps
      * {@code A}; any other exponent can make the result fractional, so the result is
-     * {@code A ⊔ B ⊔ F(64)} (the exponent's resolution counts too, like any mixed operation).
+     * {@code A ⊔ B ⊔ F64} (the exponent's resolution counts too, like any mixed operation).
      */
     private static Resolution power(Resolution base, Resolution exponent) {
         if (exponent instanceof IntLiteral lit && lit.value().signum() >= 0) {
