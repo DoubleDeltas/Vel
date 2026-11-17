@@ -4,81 +4,118 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.doubledeltas.vel.core.type.Promotion.Arithmetic;
-import com.doubledeltas.vel.core.type.Resolution.IntLiteral;
-
-/** Result types of VEL operations: shapes and element types combined. */
+/**
+ * Result algebras of VEL operations: shapes and element algebras combined (type-system.md 1, 3).
+ * Resolutions are not handled here; they are decided by the concretization rules of each target
+ * language (type-system.md 0.3, java.md 7).
+ */
 public final class TypeRules {
 
     private TypeRules() {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Element types
+    // Element algebras (type-system.md 3.1, 3.2)
     // ------------------------------------------------------------------------------------------
 
-    /** Element type of {@code a op b}. */
-    public static ScalarType arithmetic(Arithmetic op, ScalarType a, ScalarType b) {
-        Algebra algebra = Algebra.join(a.algebra(), b.algebra());
-        if (algebra == Algebra.COMPLEX && isQuotientOrRemainder(op)) {
+    /**
+     * Element algebra of {@code a op b}. For {@code ^} this is the rule for an exponent other than a
+     * non-negative integer literal ({@code A ∨ B ∨ Real}); {@link #binary} handles the literal case.
+     */
+    public static ScalarAlgebra arithmetic(Arithmetic op, ScalarAlgebra a, ScalarAlgebra b) {
+        if (a == ScalarAlgebra.BOOL || b == ScalarAlgebra.BOOL) {
+            ScalarAlgebra.join(a, b); // Bool with a numeric algebra: no join
+            // Bool: + is OR, * is AND, o+ is XOR (type-system.md footnote 1)
+            if (op == Arithmetic.ADD || op == Arithmetic.MUL || op == Arithmetic.XOR) {
+                return ScalarAlgebra.BOOL;
+            }
+            throw new VelTypeException("operator " + op + " is not defined for Bool");
+        }
+        if (op == Arithmetic.XOR) {
+            throw new VelTypeException("operator o+ is defined only for Bool");
+        }
+        ScalarAlgebra k = ScalarAlgebra.join(a, b);
+        if (k == ScalarAlgebra.COMPLEX && op.isQuotientOrRemainder()) {
             // to be defined together with the function syntax and user-defined infix operators
             throw new VelTypeException("operator " + op + " is not defined for Complex");
         }
-        return ScalarType.of(algebra, Promotion.arithmetic(op, a.resolution(), b.resolution()));
+        if (op == Arithmetic.DIV && k == ScalarAlgebra.INT) {
+            return ScalarAlgebra.REAL; // true division
+        }
+        if (op == Arithmetic.POW) {
+            return ScalarAlgebra.join(k, ScalarAlgebra.REAL);
+        }
+        return k;
     }
 
-    private static boolean isQuotientOrRemainder(Arithmetic op) {
-        return op == Arithmetic.FLOOR_DIV || op == Arithmetic.TRUNC_DIV
-                || op == Arithmetic.FLOOR_MOD || op == Arithmetic.TRUNC_MOD;
+    /** Element algebra (and constant value) of {@code a op b} for the elements of a and b. */
+    private static ArrayAlgebra element(Arithmetic op, ArrayAlgebra a, ArrayAlgebra b) {
+        ScalarAlgebra k = op == Arithmetic.POW && isNonNegativeInteger(b.constant())
+                ? arithmetic(Arithmetic.MUL, a.element(), b.element()) // repeated multiplication
+                : arithmetic(op, a.element(), b.element());
+        if (a.constant() != null && b.constant() != null) {
+            Constant folded = Constant.fold(op, a.constant(), b.constant());
+            if (folded != null && folded.algebra() == k) {
+                return ArrayAlgebra.scalar(folded);
+            }
+        }
+        return ArrayAlgebra.scalar(k);
     }
 
-    /** Element type of a concatenation or a common type: algebra ∨ and resolution ⊔ (no minimum width). */
-    public static ScalarType join(ScalarType a, ScalarType b) {
-        return ScalarType.of(Algebra.join(a.algebra(), b.algebra()), Promotion.join(a.resolution(), b.resolution()));
+    private static boolean isNonNegativeInteger(Constant c) {
+        return c instanceof Constant.Int i && i.value().signum() >= 0;
+    }
+
+    /** Element algebra of a concatenation or a common algebra: {@code ∨}. */
+    public static ScalarAlgebra join(ScalarAlgebra a, ScalarAlgebra b) {
+        return ScalarAlgebra.join(a, b);
     }
 
     // ------------------------------------------------------------------------------------------
     // Operators
     // ------------------------------------------------------------------------------------------
 
-    /** Type of {@code a op b}. */
-    public static ArrayType binary(BinaryOperator op, ArrayType a, ArrayType b) {
+    /** Algebra of {@code a op b}. */
+    public static ArrayAlgebra binary(BinaryOperator op, ArrayAlgebra a, ArrayAlgebra b) {
         // a /< b divides b by a
-        ScalarType element = op == BinaryOperator.LEFT_DIV
-                ? arithmetic(Arithmetic.DIV, b.element(), a.element())
-                : arithmetic(op.arithmetic(), a.element(), b.element());
-
-        if (op.isElementWise() || (a.isScalar() && b.isScalar())) {
-            return new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element);
+        ArrayAlgebra e = op == BinaryOperator.LEFT_DIV
+                ? element(Arithmetic.DIV, b, a)
+                : element(op.arithmetic(), a, b);
+        if (a.isScalar() && b.isScalar()) {
+            return e;
+        }
+        ScalarAlgebra k = e.element();
+        if (op.isElementWise()) {
+            return new ArrayAlgebra(Shapes.broadcast(a.dims(), b.dims()), k);
         }
         return switch (op) {
             case MUL -> a.isScalar() || b.isScalar()
-                    ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element) // scaling
-                    : new ArrayType(Shapes.matmul(a, b), element);
+                    ? new ArrayAlgebra(Shapes.broadcast(a.dims(), b.dims()), k) // scaling
+                    : new ArrayAlgebra(Shapes.matmul(a, b), k);
             case DIV, RIGHT_DIV -> b.isScalar()
-                    ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element)
-                    : new ArrayType(Shapes.rightDivide(a, b), element);
+                    ? new ArrayAlgebra(Shapes.broadcast(a.dims(), b.dims()), k)
+                    : new ArrayAlgebra(Shapes.rightDivide(a, b), k);
             case LEFT_DIV -> a.isScalar()
-                    ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element)
-                    : new ArrayType(Shapes.leftDivide(a, b), element);
+                    ? new ArrayAlgebra(Shapes.broadcast(a.dims(), b.dims()), k)
+                    : new ArrayAlgebra(Shapes.leftDivide(a, b), k);
             case POW -> {
                 if (!b.isScalar()) {
                     throw new VelTypeException("exponent of ^ must be a scalar, not " + b + " (use .^ for element-wise power)");
                 }
                 Shapes.requireSquare(a, "matrix power");
-                yield a.withElement(element);
+                yield a.withElement(k);
             }
             default -> throw new IllegalStateException(op.toString());
         };
     }
 
     /**
-     * Type of {@code if c then a else b}. The condition is a Bool scalar; only the chosen branch is
-     * evaluated. The result has the common type of the branches: the same shape (⊤ follows
-     * type-system.md 1.2), algebra ∨ and resolution ⊔ of the elements.
+     * Algebra of {@code if c then a else b}. The condition is a Bool scalar; only the chosen branch is
+     * evaluated. The result has the common algebra of the branches: the same shape (⊤ follows
+     * type-system.md 1.2) and the join of the element algebras.
      */
-    public static ArrayType conditional(ArrayType condition, ArrayType then, ArrayType otherwise) {
-        if (!condition.isScalar() || condition.element().algebra() != Algebra.BOOL) {
+    public static ArrayAlgebra conditional(ArrayAlgebra condition, ArrayAlgebra then, ArrayAlgebra otherwise) {
+        if (!condition.isScalar() || condition.element() != ScalarAlgebra.BOOL) {
             throw new VelTypeException("condition of if must be a Bool scalar, not " + condition);
         }
         int rank = Math.max(then.rank(), otherwise.rank());
@@ -88,21 +125,26 @@ public final class TypeRules {
             Card b = i < otherwise.rank() ? otherwise.dims().get(i) : Card.ONE;
             dims.add(Shapes.unify(a, b, "branches of if have different shapes, " + then + " and " + otherwise + ":"));
         }
-        return new ArrayType(dims, join(then.element(), otherwise.element()));
+        return new ArrayAlgebra(dims, join(then.element(), otherwise.element()));
     }
 
-    /** Type of {@code -a} or {@code +a}. */
-    public static ArrayType unary(ArrayType a, boolean minus) {
-        ScalarType e = a.element();
-        return a.withElement(new ScalarType(e.algebra(), Promotion.negate(e.resolution(), minus)));
+    /** Algebra of {@code -a} or {@code +a}. A constant stays a constant. */
+    public static ArrayAlgebra unary(ArrayAlgebra a, boolean minus) {
+        if (a.element() == ScalarAlgebra.BOOL) {
+            throw new VelTypeException("unary " + (minus ? "-" : "+") + " is not defined for Bool");
+        }
+        if (minus && a.constant() != null) {
+            return ArrayAlgebra.scalar(a.constant().negate());
+        }
+        return a;
     }
 
     /**
-     * Type of {@code a'} (conjugate) or {@code a.'}: the element is unchanged and the order of the
+     * Algebra of {@code a'} (conjugate) or {@code a.'}: the element is unchanged and the order of the
      * dimensions is reversed (a matrix is transposed; a tensor of rank 3 or more has its indices reversed).
      */
-    public static ArrayType transpose(ArrayType a) {
-        return a.withDims(Shapes.transpose(a));
+    public static ArrayAlgebra transpose(ArrayAlgebra a) {
+        return a.isScalar() ? a : a.withDims(Shapes.transpose(a));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -110,46 +152,46 @@ public final class TypeRules {
     // ------------------------------------------------------------------------------------------
 
     /**
-     * Type of a matrix literal {@code [A, B; C, D]}: each row is concatenated horizontally, then the
+     * Algebra of a matrix literal {@code [A, B; C, D]}: each row is concatenated horizontally, then the
      * rows vertically (type-system.md 1.4).
      */
-    public static ArrayType matrix(List<List<ArrayType>> rows) {
+    public static ArrayAlgebra matrix(List<List<ArrayAlgebra>> rows) {
         if (rows.isEmpty() || rows.stream().anyMatch(List::isEmpty)) {
             throw new VelTypeException("empty matrix literal");
         }
-        ArrayType result = null;
-        for (List<ArrayType> row : rows) {
-            ArrayType line = row.getFirst();
-            for (ArrayType block : row.subList(1, row.size())) {
-                line = new ArrayType(Shapes.horizontal(line, block), join(line.element(), block.element()));
+        ArrayAlgebra result = null;
+        for (List<ArrayAlgebra> row : rows) {
+            ArrayAlgebra line = row.getFirst();
+            for (ArrayAlgebra block : row.subList(1, row.size())) {
+                line = new ArrayAlgebra(Shapes.horizontal(line, block), join(line.element(), block.element()));
             }
             result = result == null
                     ? line
-                    : new ArrayType(Shapes.vertical(result, line), join(result.element(), line.element()));
+                    : new ArrayAlgebra(Shapes.vertical(result, line), join(result.element(), line.element()));
         }
         return result;
     }
 
     /**
-     * Type of a tuple {@code (A₁, …, Aₖ)}: the items are <em>stacked</em> along a new first dimension.
+     * Algebra of a tuple {@code (A₁, …, Aₖ)}: the items are <em>stacked</em> along a new first dimension.
      * All items have the same shape {@code 𝐝} and the result is {@code Array(k, 𝐝)}, item {@code i}
      * being {@code T[i, …]}. Scalars give {@code Vec(k)}, vectors of length M give {@code Mat(k, M)}
      * (item i is row i). The same rule maps component objects such as {@code Pair} (java.md 2.5).
      */
-    public static ArrayType tuple(List<ArrayType> items) {
+    public static ArrayAlgebra tuple(List<ArrayAlgebra> items) {
         if (items.isEmpty()) {
             throw new VelTypeException("empty tuple");
         }
         List<Card> shape = items.getFirst().dims();
-        ScalarType element = items.getFirst().element();
-        for (ArrayType item : items.subList(1, items.size())) {
+        ScalarAlgebra element = items.getFirst().element();
+        for (ArrayAlgebra item : items.subList(1, items.size())) {
             shape = unifyShapes(shape, item.dims(), "items of a tuple have different shapes:");
             element = join(element, item.element());
         }
         List<Card> dims = new ArrayList<>(shape.size() + 1);
         dims.add(Card.of(items.size()));
         dims.addAll(shape);
-        return new ArrayType(dims, element);
+        return new ArrayAlgebra(dims, element);
     }
 
     /** Two shapes that must agree dimension by dimension (missing trailing dimensions are 1). */
@@ -169,25 +211,23 @@ public final class TypeRules {
     // ------------------------------------------------------------------------------------------
 
     /**
-     * Type of a range {@code start:end} = [start, end) (end-exclusive, as in Python): a row vector of
-     * indices. Both bounds are cardinals (non-negative integer scalars). The length is known only when
-     * both bounds are integer literals ({@code max(0, end - start)}); otherwise it is ⊤.
+     * Algebra of a range {@code start:end} = [start, end) (end-exclusive, as in Python): a row vector of
+     * Int indices. Both bounds are cardinals (non-negative Int scalars). The length is known only when
+     * both bounds are integer constants ({@code max(0, end - start)}); otherwise it is ⊤.
      */
-    public static ArrayType range(ArrayType start, ArrayType end) {
+    public static ArrayAlgebra range(ArrayAlgebra start, ArrayAlgebra end) {
         requireCard(start, "range bound");
         requireCard(end, "range bound");
-        ScalarType element = join(start.element(), end.element());
-        element = new ScalarType(element.algebra(), Promotion.defaultOf(element.resolution()));
         Card length = Card.TOP;
-        if (start.element().resolution() instanceof IntLiteral s && end.element().resolution() instanceof IntLiteral e) {
+        if (start.constant() instanceof Constant.Int s && end.constant() instanceof Constant.Int e) {
             BigInteger n = e.value().subtract(s.value());
             length = Card.of(n.signum() > 0 ? n.longValueExact() : 0);
         }
-        return ArrayType.mat(Card.ONE, length, element);
+        return ArrayAlgebra.mat(Card.ONE, length, ScalarAlgebra.INT);
     }
 
     /**
-     * Type of {@code a[s₁, …, sₖ]}.
+     * Algebra of {@code a[s₁, …, sₖ]}.
      * <p>
      * Without partitions it is the selected region. With a partition {@code a₀:…:aₖ} on a matrix it is
      * a block tensor: the blocks are stacked like the items of a tuple, the block indices first.
@@ -198,7 +238,7 @@ public final class TypeRules {
      * {@code k}, {@code l} are the numbers of row and column blocks and {@code h}, {@code w} the block
      * sizes (⊤ when the blocks differ in size; the missing positions of smaller blocks are null).
      */
-    public static ArrayType index(ArrayType a, List<Subscript> subscripts) {
+    public static ArrayAlgebra index(ArrayAlgebra a, List<Subscript> subscripts) {
         List<Selection> sel = selections(a, subscripts);
         if (subscripts.stream().noneMatch(s -> s instanceof Subscript.Partition)) {
             return a.withDims(sel.stream().map(Selection::size).toList());
@@ -218,11 +258,11 @@ public final class TypeRules {
     }
 
     /**
-     * Type of the variable after {@code a[s₁, …, sₖ] = value} (copy and rewrite, type-system.md 1.5).
-     * The value must fit the selected region (or broadcast into it) and have a common type with the
-     * elements; when its resolution is larger, the whole array takes the larger resolution.
+     * Algebra of the variable after {@code a[s₁, …, sₖ] = value} (copy and rewrite, type-system.md 1.5).
+     * The value must fit the selected region (or broadcast into it) and have a common algebra with the
+     * elements; when its algebra is larger, the whole array takes the join.
      */
-    public static ArrayType indexAssign(ArrayType a, List<Subscript> subscripts, ArrayType value) {
+    public static ArrayAlgebra indexAssign(ArrayAlgebra a, List<Subscript> subscripts, ArrayAlgebra value) {
         if (subscripts.stream().anyMatch(s -> s instanceof Subscript.Partition)) {
             throw new VelTypeException("cannot assign to a partitioned index");
         }
@@ -245,11 +285,11 @@ public final class TypeRules {
      * {@code M : Mat(2, n)} gives {@code Vec(n)} rows, {@code (Top, Bottom) = M[0:3:6, :]} gives blocks.
      * ⊤ sizes follow type-system.md 1.2.
      */
-    public static ArrayType destructureTuple(ArrayType value, int k) {
+    public static ArrayAlgebra destructureTuple(ArrayAlgebra value, int k) {
         String what = "cannot destructure " + value + " into a tuple pattern of " + k + ":";
         List<Card> d = value.dims();
         Shapes.unify(d.getFirst(), Card.of(k), what);
-        return new ArrayType(d.subList(1, d.size()), value.element());
+        return new ArrayAlgebra(d.subList(1, d.size()), value.element());
     }
 
     /**
@@ -258,22 +298,22 @@ public final class TypeRules {
      * {@code value[i, j, …]}. A matrix is split into its elements (scalars), a block tensor
      * {@code Array(k, l, h, w)} into its blocks {@code Mat(h, w)}.
      */
-    public static ArrayType destructureMatrix(ArrayType value, int rows, int cols) {
+    public static ArrayAlgebra destructureMatrix(ArrayAlgebra value, int rows, int cols) {
         String what = "cannot destructure " + value + " into a " + rows + "x" + cols + " pattern:";
         List<Card> d = value.dims();
         Shapes.unify(d.get(0), Card.of(rows), what);
         Shapes.unify(d.get(1), Card.of(cols), what);
         List<Card> rest = d.subList(2, d.size());
-        return rest.isEmpty() ? ArrayType.scalar(value.element()) : new ArrayType(rest, value.element());
+        return rest.isEmpty() ? ArrayAlgebra.scalar(value.element()) : new ArrayAlgebra(rest, value.element());
     }
 
     /**
-     * Exact types of the blocks of {@code a[s₁, s₂]}, {@code blocks.get(i).get(j)} being block
+     * Exact algebras of the blocks of {@code a[s₁, s₂]}, {@code blocks.get(i).get(j)} being block
      * {@code (i, j)}. When the right-hand side of a block destructuring is written as a partitioned
-     * index, the targets get these types instead of the common (possibly ⊤) block size of the tensor:
+     * index, the targets get these algebras instead of the common (possibly ⊤) block size of the tensor:
      * in {@code [A, B; C, D] = M[0:2:3, 0:1:3]}, {@code A} is 2x1 and {@code C} is a scalar.
      */
-    public static List<List<ArrayType>> blocks(ArrayType a, List<Subscript> subscripts) {
+    public static List<List<ArrayAlgebra>> blocks(ArrayAlgebra a, List<Subscript> subscripts) {
         index(a, subscripts); // validates
         List<Selection> sel = selections(a, subscripts);
         if (sel.size() != 2) {
@@ -281,11 +321,11 @@ public final class TypeRules {
         }
         List<Card> rows = blockSizes(sel.get(0), rowsOrCols(a, subscripts, 0));
         List<Card> cols = blockSizes(sel.get(1), rowsOrCols(a, subscripts, 1));
-        List<List<ArrayType>> result = new ArrayList<>();
+        List<List<ArrayAlgebra>> result = new ArrayList<>();
         for (Card r : rows) {
-            List<ArrayType> line = new ArrayList<>();
+            List<ArrayAlgebra> line = new ArrayList<>();
             for (Card c : cols) {
-                line.add(ArrayType.mat(r, c, a.element()));
+                line.add(ArrayAlgebra.mat(r, c, a.element()));
             }
             result.add(List.copyOf(line));
         }
@@ -293,7 +333,7 @@ public final class TypeRules {
     }
 
     /** The subscript applied to dimension {@code dim} of a matrix (a vector's single subscript applies to its long side). */
-    private static Subscript rowsOrCols(ArrayType a, List<Subscript> subscripts, int dim) {
+    private static Subscript rowsOrCols(ArrayAlgebra a, List<Subscript> subscripts, int dim) {
         if (subscripts.size() == 2) {
             return subscripts.get(dim);
         }
@@ -307,8 +347,8 @@ public final class TypeRules {
         }
         List<Card> sizes = new ArrayList<>();
         for (int i = 1; i < p.cuts().size(); i++) {
-            if (p.cuts().get(i - 1).element().resolution() instanceof IntLiteral lo
-                    && p.cuts().get(i).element().resolution() instanceof IntLiteral hi) {
+            if (p.cuts().get(i - 1).constant() instanceof Constant.Int lo
+                    && p.cuts().get(i).constant() instanceof Constant.Int hi) {
                 sizes.add(Card.of(hi.value().subtract(lo.value()).longValueExact()));
             } else {
                 sizes.add(Card.TOP);
@@ -322,7 +362,7 @@ public final class TypeRules {
         static final Selection ONE = new Selection(Card.ONE, Card.ONE);
     }
 
-    private static List<Selection> selections(ArrayType a, List<Subscript> subscripts) {
+    private static List<Selection> selections(ArrayAlgebra a, List<Subscript> subscripts) {
         if (subscripts.size() == a.rank()) {
             List<Selection> result = new ArrayList<>(a.rank());
             for (int i = 0; i < a.rank(); i++) {
@@ -343,7 +383,7 @@ public final class TypeRules {
         return switch (subscript) {
             case Subscript.At at -> {
                 requireCard(at.index(), "index");
-                if (at.index().element().resolution() instanceof IntLiteral lit
+                if (at.index().constant() instanceof Constant.Int lit
                         && size instanceof Card.Finite f && lit.value().compareTo(BigInteger.valueOf(f.size())) >= 0) {
                     throw new VelTypeException("index " + lit.value() + " out of bounds for size " + f.size());
                 }
@@ -358,9 +398,9 @@ public final class TypeRules {
     /** Block size (⊤ unless all blocks are known and equal) and block count of a partition. */
     private static Selection partition(Card size, Subscript.Partition p) {
         List<BigInteger> cuts = new ArrayList<>();
-        for (ArrayType cut : p.cuts()) {
+        for (ArrayAlgebra cut : p.cuts()) {
             requireCard(cut, "cut point");
-            cuts.add(cut.element().resolution() instanceof IntLiteral lit ? lit.value() : null);
+            cuts.add(cut.constant() instanceof Constant.Int lit ? lit.value() : null);
         }
         Card blocks = Card.of(cuts.size() - 1);
         if (cuts.contains(null)) {
@@ -383,13 +423,12 @@ public final class TypeRules {
         return new Selection(Card.of(first.longValueExact()), blocks);
     }
 
-    /** A cardinal: a non-negative integer scalar. */
-    private static void requireCard(ArrayType t, String what) {
-        Resolution r = t.element().resolution();
-        if (!t.isScalar() || t.element().algebra() != Algebra.INT) {
-            throw new VelTypeException(what + " must be a non-negative integer scalar, not " + t);
+    /** A cardinal: a non-negative Int scalar. */
+    private static void requireCard(ArrayAlgebra t, String what) {
+        if (!t.isScalar() || t.element() != ScalarAlgebra.INT) {
+            throw new VelTypeException(what + " must be a non-negative Int scalar, not " + t);
         }
-        if (r instanceof IntLiteral lit && lit.value().signum() < 0) {
+        if (t.constant() instanceof Constant.Int lit && lit.value().signum() < 0) {
             throw new VelTypeException(what + " must not be negative: " + lit.value());
         }
     }

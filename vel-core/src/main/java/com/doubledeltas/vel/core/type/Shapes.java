@@ -53,7 +53,7 @@ public final class Shapes {
     }
 
     /** {@code Mat(m, k) · Mat(k, n) : Mat(m, n)}. */
-    public static List<Card> matmul(ArrayType a, ArrayType b) {
+    public static List<Card> matmul(ArrayAlgebra a, ArrayAlgebra b) {
         requireMatrix(a, "matrix product");
         requireMatrix(b, "matrix product");
         unify(a.cols(), b.rows(), "inner dimension of matrix product");
@@ -61,7 +61,7 @@ public final class Shapes {
     }
 
     /** {@code A / B = A · B⁻¹}: B is square and A has as many columns as B. */
-    public static List<Card> rightDivide(ArrayType a, ArrayType b) {
+    public static List<Card> rightDivide(ArrayAlgebra a, ArrayAlgebra b) {
         requireMatrix(a, "matrix division");
         requireMatrix(b, "matrix division");
         Card n = unify(b.rows(), b.cols(), "divisor must be square:");
@@ -70,7 +70,7 @@ public final class Shapes {
     }
 
     /** {@code A /< B = A⁻¹ · B}: A is square and has as many rows as B. */
-    public static List<Card> leftDivide(ArrayType a, ArrayType b) {
+    public static List<Card> leftDivide(ArrayAlgebra a, ArrayAlgebra b) {
         requireMatrix(a, "matrix division");
         requireMatrix(b, "matrix division");
         Card n = unify(a.rows(), a.cols(), "divisor must be square:");
@@ -79,31 +79,31 @@ public final class Shapes {
     }
 
     /** A square matrix (for matrix power). */
-    public static void requireSquare(ArrayType a, String operation) {
+    public static void requireSquare(ArrayAlgebra a, String operation) {
         requireMatrix(a, operation);
         unify(a.rows(), a.cols(), operation + " needs a square matrix:");
     }
 
     /** Reverses the order of the dimensions: a matrix is transposed, a tensor of rank 3 or more is reversed. */
-    public static List<Card> transpose(ArrayType a) {
+    public static List<Card> transpose(ArrayAlgebra a) {
         return a.dims().reversed();
     }
 
     /** {@code [A, B]}: same number of rows, columns add up. */
-    public static List<Card> horizontal(ArrayType a, ArrayType b) {
+    public static List<Card> horizontal(ArrayAlgebra a, ArrayAlgebra b) {
         requireMatrix(a, "concatenation");
         requireMatrix(b, "concatenation");
         return List.of(unify(a.rows(), b.rows(), "rows of horizontal concatenation"), a.cols().plus(b.cols()));
     }
 
     /** {@code [A; B]}: same number of columns, rows add up. */
-    public static List<Card> vertical(ArrayType a, ArrayType b) {
+    public static List<Card> vertical(ArrayAlgebra a, ArrayAlgebra b) {
         requireMatrix(a, "concatenation");
         requireMatrix(b, "concatenation");
         return List.of(a.rows().plus(b.rows()), unify(a.cols(), b.cols(), "columns of vertical concatenation"));
     }
 
-    private static void requireMatrix(ArrayType a, String operation) {
+    private static void requireMatrix(ArrayAlgebra a, String operation) {
         if (!a.isMatrix()) {
             throw new VelTypeException(operation + " is defined for matrices, not " + a);
         }

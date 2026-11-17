@@ -39,7 +39,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 | 모듈 | 내용 |
 |---|---|
 | `vel-runtime` | `@Vel`(SOURCE 유지), `@Dim(java=…|vel=…)`(CLASS 유지, 배열 크기 지정), `VelInline.vel(String)`(플러그인 미적용 시 예외를 던지는 자리표시자). 사용자 런타임 클래스패스에 올라가는 유일한 모듈 |
-| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. 타입 모델은 `core.type` 패키지(`Card`, `Algebra`, `Resolution`, `Promotion`, `ScalarType`, `ArrayType`, `Shapes`, `BinaryOperator`, `TypeRules`) |
+| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. VEL 대수 모델은 `core.type` 패키지(`Card`, `ScalarAlgebra`, `ArrayAlgebra`, `Constant`, `Arithmetic`, `Shapes`, `BinaryOperator`, `TypeRules`), Java 구체화 규칙은 `core.concretization` 패키지(`Resolution`, `ScalarType`, `Operand`, `Promotion`) |
 | `vel-processor` | `VelProcessor`: `@Vel` 메서드의 배치(추상 여부, 소속)와 문법을 검증하고, 오류를 어노테이션 값 위치에 보고 |
 | `vel-javac` | `VelJavacPlugin`: ANALYZE 단계 이후 `VelInline.vel` 호출(정규화된 이름으로 판별)을 찾아 문자열 리터럴 여부와 문법을 검증. `autoStart=true` |
 | `vel-examples` | B와 C 사용 예. `annotationProcessor`로 processor와 javac 모듈을 연결 |
@@ -137,10 +137,10 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 
 - **용어 (결정됨, 2026-11-18 확립)**: 문서·코드·대화 모두 이 용어를 쓴다.
   - **대수**(algebra): 해상도 없는 수학적 구조. 스칼라 대수와 그 배열. 예: `Real`, `Vec(3, Real)`, `Mat(m, n, Complex)`
-  - **스칼라 대수**: 원자적인 대수 `Bool`, `Int`, `Real`, `Complex`. 코드의 `Algebra` enum.
-  - **해상도**: `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`, `D∞`. 코드의 `Resolution`.
-  - **스칼라 타입**: 스칼라 대수에 해상도를 적용한 타입. 예: `⟨Real⟩_F64`(`double`), `⟨Bool⟩`. 배열 타입의 원소는 스칼라 타입이다. 코드의 `ScalarType`.
-  - **타입**: 대수에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `ScalarType`(스칼라 대수+해상도), `ArrayType`(모양+`ScalarType`).
+  - **스칼라 대수**: 원자적인 대수 `Bool`, `Int`, `Real`, `Complex`. 코드의 `ScalarAlgebra` enum.
+  - **해상도**: `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`, `D∞`. 코드의 `concretization.Resolution`.
+  - **스칼라 타입**: 스칼라 대수에 해상도를 적용한 타입. 예: `⟨Real⟩_F64`(`double`), `⟨Bool⟩`. 배열 타입의 원소는 스칼라 타입이다. 코드의 `concretization.ScalarType`.
+  - **타입**: 대수에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `concretization.ScalarType`(스칼라 대수+해상도). 배열 타입 클래스는 아직 없다(매핑 구현 때 추가). VEL 안의 값은 `type.ArrayAlgebra`(모양+스칼라 대수+상수값).
   - 예전 문서의 "스칼라 타입(대수)", "대수 = 스칼라 타입" 같은 표현은 쓰지 않는다.
 - **대수의 구성**:
   - 모든 객체는 함수다.
@@ -161,13 +161,13 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - Java 메서드 호출의 부수 효과는 막지 않는다.
 - **`Card`를 스칼라 대수로** (결정됨 2026-11-18): `Card := 0 | ℕ | ⊤ | ⊥`. `0 < 1 < … < ⊤`이고 ⊥(무효 원소)는 순서 밖, 유효하지 않은 인덱스. 다른 대수와의 위계, 해상도, 연산(뺄셈 등)은 미정.
 - **`Nat` 스칼라 대수는 기각** (2026-11-18): 인덱스 전용 자연수 대수는 두지 않는다. 인덱스를 `Nat`로 제한하면 `a[b[i]]`(`b: int[]`)나 `end - 1` 같은 `Int` 식을 인덱스로 못 쓰므로, 인덱스는 `Int` 스칼라로 받고 음수·범위는 실행 시 검사한다. `end`, `size` 같은 크기 값은 `⟨Int⟩` 스칼라.
-- **스칼라 대수**: `Bool`, `Int <: Real <: Complex`. Bool은 다른 대수와 관계없다(`+`가 OR이라 0/1이 아님). (2026-11-18) 용어 "체(field)"는 Java 필드와 헷갈리고 Bool·Int·Vec에 수학적으로도 맞지 않아 **"대수(algebra)"**로 바꿨다. 코드는 `Algebra` enum, `ScalarType.algebra()`.
+- **스칼라 대수**: `Bool`, `Int <: Real <: Complex`. Bool은 다른 대수와 관계없다(`+`가 OR이라 0/1이 아님). (2026-11-18) 용어 "체(field)"는 Java 필드와 헷갈리고 Bool·Int·Vec에 수학적으로도 맞지 않아 **"대수(algebra)"**로 바꿨다. 코드는 `ScalarAlgebra` enum.
   - **Int (결정됨 2026-11-18)**: 스칼라 대수 ↔ 해상도 조합은 `Int` ↔ `Zn`/`Z+n`/`Z∞`, `Real`/`Complex` ↔ `Fn`/`Dn`/`D∞`, `Bool` ↔ `Bool`뿐이다. 미정 리터럴은 수치 대수 어디에나 붙지만 소수·유리 리터럴은 `Int`에 못 붙는다. 정수 리터럴은 `Int`, 소수 리터럴은 `Real`.
-  - 정규화(`ScalarType.of`, `type-system.md` 3.1): 결과 대수가 `Real`/`Complex`인데 해상도가 정수면 `Zn → F64`, `Z∞ → D∞`. 결과 해상도가 정수가 아닌데 대수가 `Int`면 대수를 `Real`로. 예: `Int / Int`는 `⟨Real⟩_F64`, `j * int`는 `⟨Complex⟩_F64`.
+  - 정규화(`concretization.ScalarType.of`, `java.md` 7.3 "대수와 해상도 맞추기"): 결과 대수가 `Real`/`Complex`인데 해상도가 정수면 `Zn → F64`, `Z∞ → D∞`. 결과 해상도가 정수가 아닌데 대수가 `Int`면 대수를 `Real`로. 예: `Int / Int`는 `⟨Real⟩_F64`, `j * int`는 `⟨Complex⟩_F64`.
   - 인덱스와 범위 경계는 `Int` 스칼라여야 한다(`TypeRules.requireCard`).
   - 복소 정수(`ComplexInt`)는 지금은 다루지 않는다. 필요하면 나중에 추가.
 - **해상도**: `Bool`, `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`(IEEE 754 십진 부동소수), `D∞`
-- **해상도의 역할 재정의 (결정됨 2026-11-18, 문서·코드 미반영)**: 해상도끼리의 변환·승격 규칙은 없다. 해상도는 Java/Kotlin 경계의 **캐스팅 규칙을 나타내는 기호**다. 흐름: Java 타입(해상도 지정) → VEL 대수 → 처리(대수 위에서) → VEL 대수 → Java 타입(대상 해상도로 캐스팅). **추상화**(abstraction) = 타입 → 대수, **구체화**(concretization) = 대수 → 타입(`type-system.md` 0.3). VEL 안의 연산은 값을 계산하지 않고 식의 연산·기호만 지시한다. 실제 계산은 구체화에서 입출력 해상도의 범위, 오버플로, 캐스팅, 유효 자릿수 규칙을 따른다. `Real → Z32` 같은 변환은 구체화의 일부이며 추상화 전 입력 해상도에 따라 다르다(예: F64 입력이면 Java `double → int` 캐스팅). 구체화는 전처리 시점에 일어나며 스칼라 펼치기, SIMD 등 최적 코드를 생성해야 한다. 중간 계산의 해상도는 **언어별 구체화 규칙**으로 옮겼다(결정됨 2026-11-18): `type-system.md` 3장은 이제 대수 위의 연산(∨, 연산자별 대수 규칙, 리터럴 = 정확한 수와 상수 접기, 식 재배열)만 다루고, 아래 승격 규칙은 `java.md` 7절 "구체화 규칙"(7.1 구체화 지점: return/대입/메서드 인자/인덱스 `int`/조건 `boolean`, 7.2 ⊑, 7.3 ⊔·최소 연산 폭·연산자별 예외·대수-해상도 맞추기, 7.4 오버플로·반올림, 7.5 D∞, 7.6 리터럴, 7.7 배열)로 옮겼다. Kotlin은 Java 7절을 따른다. **식 재배열**: 구체화할 때 결합법칙이 성립하는 연산(+, 스칼라·행렬 *, .*, Bool o+)은 묶는 순서를 바꿀 수 있다(예: `(A*B)*v → A*(B*v)`). **코드 미반영**: `Promotion`, `ScalarType`, `TypeRules`는 아직 VEL 안에서 해상도를 계산한다. 구체화 단계로 분리하는 리팩터링이 필요하다.
+- **해상도의 역할 재정의 (결정됨 2026-11-18)**: 해상도끼리의 변환·승격 규칙은 없다. 해상도는 Java/Kotlin 경계의 **캐스팅 규칙을 나타내는 기호**다. 흐름: Java 타입(해상도 지정) → VEL 대수 → 처리(대수 위에서) → VEL 대수 → Java 타입(대상 해상도로 캐스팅). **추상화**(abstraction) = 타입 → 대수, **구체화**(concretization) = 대수 → 타입(`type-system.md` 0.3). VEL 안의 연산은 값을 계산하지 않고 식의 연산·기호만 지시한다. 실제 계산은 구체화에서 입출력 해상도의 범위, 오버플로, 캐스팅, 유효 자릿수 규칙을 따른다. `Real → Z32` 같은 변환은 구체화의 일부이며 추상화 전 입력 해상도에 따라 다르다(예: F64 입력이면 Java `double → int` 캐스팅). 구체화는 전처리 시점에 일어나며 스칼라 펼치기, SIMD 등 최적 코드를 생성해야 한다. 중간 계산의 해상도는 **언어별 구체화 규칙**으로 옮겼다(결정됨 2026-11-18): `type-system.md` 3장은 이제 대수 위의 연산(∨, 연산자별 대수 규칙, 리터럴 = 정확한 수와 상수 접기, 식 재배열)만 다루고, 아래 승격 규칙은 `java.md` 7절 "구체화 규칙"(7.1 구체화 지점: return/대입/메서드 인자/인덱스 `int`/조건 `boolean`, 7.2 ⊑, 7.3 ⊔·최소 연산 폭·연산자별 예외·대수-해상도 맞추기, 7.4 오버플로·반올림, 7.5 D∞, 7.6 리터럴, 7.7 배열)로 옮겼다. Kotlin은 Java 7절을 따른다. **식 재배열**: 구체화할 때 결합법칙이 성립하는 연산(+, 스칼라·행렬 *, .*, Bool o+)은 묶는 순서를 바꿀 수 있다(예: `(A*B)*v → A*(B*v)`). 코드도 분리했다(2026-11-18): `core.type`은 대수만, `core.concretization`은 해상도만 다룬다.
 - **승격 규칙** (`java.md` 7절 구체화 규칙으로 이동):
   - `⊑`(정확히 표현 가능): 암시적 변환은 이 방향으로만 허용한다. `F`와 `Dn` 사이는 서로 `⊑`가 아니다.
   - `⊔` 우선순위 표:
@@ -201,14 +201,15 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 범위 밖 접근(`ArrayIndexOutOfBoundsException` 등)은 NPE로 보고한다.
   - jagged 배열: 안쪽 차원을 `⊤`로 보고 같은 규칙(범위 밖은 null → NPE)을 따른다.
 
-### 타입 모델 구현 메모 (`vel-core` `core.type`)
-- `ArrayType`은 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
-- 리터럴은 `Resolution.IntLiteral`/`DecimalLiteral`/`RationalLiteral`(값 포함, 소수는 끝의 0을 정리한 정규형)로 표현하고, 상대 피연산자를 만날 때 `Promotion.adopt`로 해상도를 정한다. 단항 `-`는 리터럴을 리터럴로 유지한다(`x * -1`이 `x`를 따르게).
-- `j`는 `Complex` 필드 + 정수 리터럴 해상도(`ScalarType.IMAGINARY_UNIT`)로 둔다.
+### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
+- `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
+- 리터럴과 상수 접기 결과는 스칼라 `ArrayAlgebra`의 `constant`(`Constant.Int`/`Decimal`/`Rational`, 소수는 끝의 0을 정리한 정규형)로 들고 다닌다. 상수 접기는 `Constant.fold`(VEL 의미론). 리터럴 인덱스, 범위 길이, `^` 규칙이 이 값을 본다. 단항 `-`는 상수를 상수로 유지한다(`x * -1`이 `x`를 따르게).
+- 구체화 쪽에서 상수는 `Operand.Literal`, 해상도가 정해진 값은 `Operand.Fixed`. `Promotion.adopt`로 상수가 상대 해상도를 따른다.
+- `j`는 VEL에서 `Complex` 스칼라(상수값 없음). 구체화할 때 실수부·허수부를 정수 상수로 보고 상대 해상도를 따르게 한다(구체화기 구현 때 반영).
 - `Promotion.join`(⊔)은 최소 연산 폭을 적용하지 않는다(연결용). 산술 결과(`Promotion.arithmetic`)에만 적용한다.
 - 인덱싱 규칙(`TypeRules.index`): 첨자 수 = 랭크, 단 벡터는 첨자 하나. 정수 스칼라 첨자는 크기 1, 범위는 그 길이, `:`는 차원 전체. 리터럴 인덱스가 정해진 크기를 넘으면 오류. (제가 정한 부분: 벡터의 단일 첨자 규칙, 리터럴 인덱스 범위 검사)
-- `A ^ B`에서 지수가 음이 아닌 정수 리터럴이 아니면 `A ⊔ B ⊔ F64`다(지수의 해상도도 반영).
-- 함수 타입은 아직 모델에 없다(`VelType`은 `ArrayType`만 허용). 함수 문법과 함께 추가한다. 표기는 `Func(A, B)`(결정됨 2026-11-18, `A ↦ B` 대신). `Func(A, B)`는 대수이고 A, B도 대수다. 구성자(`Array`, `Func`, `×`)의 인자 자리에 대수 대신 **해상도**나 **타입**을 넣을 수 있다(결정됨 2026-11-18; 입력/출력 해상도 분리안은 취소). 인자가 모두 해상도면 구조를 가진 해상도(`Func(F64, Z64)`, `F64 × Z32`), 모두 타입이면 타입. `⟨Func(A, B)⟩_{Func(R_A, R_B)} = Func(⟨A⟩_{R_A}, ⟨B⟩_{R_B})`, 단일 `R`은 모든 자리에 적용. 예: `DoubleToLongFunction` = `⟨Func(Real, Int)⟩_{Func(F64, Z64)}`, `Math.scalb` = `⟨Func(Real × Int, Real)⟩_{Func(F64 × Z32, F64)}`. 배열의 인덱스 집합에는 해상도가 없다. **배열의 해상도는 하나**이고, 해상도가 다른 원소로 만들면(성분 객체 등) 기본으로 가장 큰 해상도(언어별 ⊔, `java.md` 7.3)를 고른다(결정됨 2026-11-18). 해상도 연산 규칙(⊑와 ⊔의 불일치 등)은 재검토 예정.
+- `A ^ B`: 지수가 음이 아닌 정수 상수면 대수는 `A`(반복 곱), 아니면 `A ∨ B ∨ Real`. 해상도는 각각 `A`, `A ⊔ B ⊔ F64`(지수의 해상도도 반영).
+- 함수 대수는 아직 모델에 없다(`VelAlgebra`는 `ArrayAlgebra`만 허용). 함수 문법과 함께 추가한다. 표기는 `Func(A, B)`(결정됨 2026-11-18, `A ↦ B` 대신). `Func(A, B)`는 대수이고 A, B도 대수다. 구성자(`Array`, `Func`, `×`)의 인자 자리에 대수 대신 **해상도**나 **타입**을 넣을 수 있다(결정됨 2026-11-18; 입력/출력 해상도 분리안은 취소). 인자가 모두 해상도면 구조를 가진 해상도(`Func(F64, Z64)`, `F64 × Z32`), 모두 타입이면 타입. `⟨Func(A, B)⟩_{Func(R_A, R_B)} = Func(⟨A⟩_{R_A}, ⟨B⟩_{R_B})`, 단일 `R`은 모든 자리에 적용. 예: `DoubleToLongFunction` = `⟨Func(Real, Int)⟩_{Func(F64, Z64)}`, `Math.scalb` = `⟨Func(Real × Int, Real)⟩_{Func(F64 × Z32, F64)}`. 배열의 인덱스 집합에는 해상도가 없다. **배열의 해상도는 하나**이고, 해상도가 다른 원소로 만들면(성분 객체 등) 기본으로 가장 큰 해상도(언어별 ⊔, `java.md` 7.3)를 고른다(결정됨 2026-11-18). 해상도 연산 규칙은 구체화 규칙(`java.md` 7)으로 옮겨 정리했다.
 
 ## 6. 미정 / 추후 과제
 

@@ -1,13 +1,9 @@
-package com.doubledeltas.vel.core.type;
-
-import java.math.BigDecimal;
-import java.math.BigInteger;
+package com.doubledeltas.vel.core.concretization;
 
 /**
- * Resolution: the range and precision used to represent scalar values (type-system.md 2).
- * <p>
- * Besides the concrete resolutions, literals carry an <em>undetermined</em> resolution together with
- * their value; they take the resolution of the operand they are used with (type-system.md 3.4).
+ * Resolution: the range and precision used to represent scalar values (type-system.md 2). There are no
+ * conversion rules between resolutions inside VEL; a resolution is a symbol for the range, overflow,
+ * casting and significant digits that a concretization follows (type-system.md 0.3, java.md 7).
  */
 public sealed interface Resolution {
 
@@ -33,14 +29,6 @@ public sealed interface Resolution {
 
     static Resolution decimalFloat(int bits) {
         return new DecimalFloat(bits);
-    }
-
-    static Resolution literal(BigInteger value) {
-        return new IntLiteral(value);
-    }
-
-    static Resolution literal(BigDecimal value) {
-        return new DecimalLiteral(value);
     }
 
     /** ⟨Bool⟩ */
@@ -134,46 +122,7 @@ public sealed interface Resolution {
         }
     }
 
-    /** An integer literal whose resolution is not yet determined. */
-    record IntLiteral(BigInteger value) implements Resolution {
-        @Override
-        public String toString() {
-            return "lit(" + value + ")";
-        }
-    }
-
-    /** A decimal literal whose resolution is not yet determined. */
-    record DecimalLiteral(BigDecimal value) implements Resolution {
-        /** Kept without trailing zeros so that equal values are equal literals ({@code 1.0 == 1}). */
-        public DecimalLiteral {
-            value = value.stripTrailingZeros();
-        }
-
-        @Override
-        public String toString() {
-            return "lit(" + value.toPlainString() + ")";
-        }
-    }
-
-    /**
-     * An exact constant that is not a finite decimal, such as {@code 1/3}, produced by folding
-     * literal arithmetic. Behaves like a decimal literal; only D∞ (kept as a fraction) holds it exactly.
-     *
-     * @param numerator   any integer
-     * @param denominator greater than 1, coprime with the numerator, with a prime factor other than 2 and 5
-     */
-    record RationalLiteral(BigInteger numerator, BigInteger denominator) implements Resolution {
-        @Override
-        public String toString() {
-            return "lit(" + numerator + "/" + denominator + ")";
-        }
-    }
-
-    default boolean isLiteral() {
-        return this instanceof IntLiteral || this instanceof DecimalLiteral || this instanceof RationalLiteral;
-    }
-
-    /** Zn, Z+n or Z∞ (literals excluded). */
+    /** Zn, Z+n or Z∞. */
     default boolean isInteger() {
         return this instanceof FixedInt || this instanceof BigInt;
     }

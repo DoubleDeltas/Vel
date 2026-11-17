@@ -1,7 +1,5 @@
 package com.doubledeltas.vel.core.type;
 
-import com.doubledeltas.vel.core.type.Promotion.Arithmetic;
-
 /** Binary operators of VEL and the element-level arithmetic each one uses. */
 public enum BinaryOperator {
     ADD("+", Arithmetic.ADD, true),

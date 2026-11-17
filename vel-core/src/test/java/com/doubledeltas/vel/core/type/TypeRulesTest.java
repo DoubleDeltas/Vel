@@ -4,15 +4,24 @@ import static com.doubledeltas.vel.core.type.BinaryOperator.ADD;
 import static com.doubledeltas.vel.core.type.BinaryOperator.DIV;
 import static com.doubledeltas.vel.core.type.BinaryOperator.EW_MUL;
 import static com.doubledeltas.vel.core.type.BinaryOperator.EW_POW;
+import static com.doubledeltas.vel.core.type.BinaryOperator.FLOOR_DIV;
 import static com.doubledeltas.vel.core.type.BinaryOperator.FLOOR_MOD;
 import static com.doubledeltas.vel.core.type.BinaryOperator.LEFT_DIV;
 import static com.doubledeltas.vel.core.type.BinaryOperator.MUL;
 import static com.doubledeltas.vel.core.type.BinaryOperator.POW;
 import static com.doubledeltas.vel.core.type.BinaryOperator.RIGHT_DIV;
+import static com.doubledeltas.vel.core.type.BinaryOperator.SUB;
+import static com.doubledeltas.vel.core.type.BinaryOperator.TRUNC_DIV;
+import static com.doubledeltas.vel.core.type.BinaryOperator.TRUNC_MOD;
 import static com.doubledeltas.vel.core.type.BinaryOperator.XOR;
 import static com.doubledeltas.vel.core.type.Card.TOP;
+import static com.doubledeltas.vel.core.type.ScalarAlgebra.BOOL;
+import static com.doubledeltas.vel.core.type.ScalarAlgebra.COMPLEX;
+import static com.doubledeltas.vel.core.type.ScalarAlgebra.INT;
+import static com.doubledeltas.vel.core.type.ScalarAlgebra.REAL;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,20 +33,24 @@ import org.junit.jupiter.api.Test;
 
 class TypeRulesTest {
 
-    private static final ScalarType F64 = ScalarType.real(Resolution.FLOAT64);
-    private static final ScalarType F32 = ScalarType.real(Resolution.FLOAT32);
-    private static final ScalarType I32 = ScalarType.integer(Resolution.INT32);
-
     private static Card n(long v) {
         return Card.of(v);
     }
 
-    private static ArrayType mat(Card r, Card c) {
-        return ArrayType.mat(r, c, F64);
+    private static ArrayAlgebra mat(Card r, Card c) {
+        return ArrayAlgebra.mat(r, c, REAL);
     }
 
-    private static ArrayType lit(long v) {
-        return ArrayType.scalar(ScalarType.literal(BigInteger.valueOf(v)));
+    private static ArrayAlgebra scalar(ScalarAlgebra k) {
+        return ArrayAlgebra.scalar(k);
+    }
+
+    private static ArrayAlgebra lit(long v) {
+        return ArrayAlgebra.scalar(Constant.of(v));
+    }
+
+    private static ArrayAlgebra lit(String v) {
+        return ArrayAlgebra.scalar(Constant.of(new BigDecimal(v)));
     }
 
     // ---- canonical shapes -----------------------------------------------------------------------
@@ -45,13 +58,13 @@ class TypeRulesTest {
     @Test
     void definitionsHoldByEquality() {
         // Vec(n) = Mat(n, 1), scalar = Mat(1, 1), Array(n) = Vec(n), trailing 1s dropped
-        assertEquals(ArrayType.vec(n(3), F64), mat(n(3), n(1)));
-        assertEquals(ArrayType.scalar(F64), mat(n(1), n(1)));
-        assertEquals(ArrayType.vec(n(3), F64), ArrayType.of(F64, n(3)));
-        assertEquals(mat(n(3), n(4)), ArrayType.of(F64, n(3), n(4), n(1), n(1)));
-        assertEquals(3, ArrayType.of(F64, n(2), n(3), n(4)).rank());
-        assertTrue(ArrayType.scalar(F64).isScalar());
-        assertFalse(ArrayType.vec(TOP, F64).isScalar()); // ⊤ is never assumed to be 1
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), mat(n(3), n(1)));
+        assertEquals(scalar(REAL), mat(n(1), n(1)));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.of(REAL, n(3)));
+        assertEquals(mat(n(3), n(4)), ArrayAlgebra.of(REAL, n(3), n(4), n(1), n(1)));
+        assertEquals(3, ArrayAlgebra.of(REAL, n(2), n(3), n(4)).rank());
+        assertTrue(scalar(REAL).isScalar());
+        assertFalse(ArrayAlgebra.vec(TOP, REAL).isScalar()); // ⊤ is never assumed to be 1
     }
 
     @Test
@@ -62,35 +75,117 @@ class TypeRulesTest {
         assertEquals(n(3), n(2).max(n(3)));
     }
 
+    @Test
+    void onlyScalarsCarryConstants() {
+        assertEquals(INT, lit(1).element());
+        assertEquals(REAL, lit("0.5").element());
+        assertThrows(IllegalArgumentException.class,
+                () -> new ArrayAlgebra(List.of(n(2), n(1)), INT, Constant.of(1)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ArrayAlgebra(List.of(n(1), n(1)), REAL, Constant.of(1)));
+    }
+
     // ---- 1.2 / 1.3 broadcasting -----------------------------------------------------------------
 
     @Test
     void broadcastingExamplesFromTheDocument() {
         // Vec(3) + Mat(1, 4) : Mat(3, 4)
-        assertEquals(mat(n(3), n(4)), TypeRules.binary(ADD, ArrayType.vec(n(3), F64), mat(n(1), n(4))));
-        // Mat(3, 4) + [F] : Mat(3, 4)
-        assertEquals(mat(n(3), n(4)), TypeRules.binary(ADD, mat(n(3), n(4)), ArrayType.scalar(F64)));
+        assertEquals(mat(n(3), n(4)), TypeRules.binary(ADD, ArrayAlgebra.vec(n(3), REAL), mat(n(1), n(4))));
+        // Mat(3, 4) + [K] : Mat(3, 4)
+        assertEquals(mat(n(3), n(4)), TypeRules.binary(ADD, mat(n(3), n(4)), scalar(REAL)));
     }
 
     @Test
     void topDimensions() {
         // ⊤ with n (or ⊤) gives ⊤; known mismatches are compile errors
-        assertEquals(ArrayType.vec(TOP, F64), TypeRules.binary(ADD, ArrayType.vec(TOP, F64), ArrayType.vec(n(3), F64)));
-        assertEquals(ArrayType.vec(TOP, F64), TypeRules.binary(ADD, ArrayType.vec(TOP, F64), ArrayType.vec(TOP, F64)));
+        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(TOP, REAL)));
         assertThrows(VelTypeException.class,
-                () -> TypeRules.binary(ADD, ArrayType.vec(n(3), F64), ArrayType.vec(n(4), F64)));
+                () -> TypeRules.binary(ADD, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(4), REAL)));
         // a known 1 expands to ⊤, but ⊤ never expands
-        assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, ArrayType.vec(TOP, F64), mat(n(1), n(4))));
+        assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), mat(n(1), n(4))));
         assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, mat(TOP, n(1)), mat(TOP, n(4))));
     }
 
     @Test
     void elementWiseOperatorsBroadcastAndJoin() {
-        // Vec(3, F32) .* Mat(1, 2, F64) : Mat(3, 2, F64)
-        ArrayType r = TypeRules.binary(EW_MUL, ArrayType.vec(n(3), F32), mat(n(1), n(2)));
-        assertEquals(ArrayType.mat(n(3), n(2), F64), r);
-        // .^ with an integer literal exponent keeps the base resolution
-        assertEquals(ArrayType.vec(n(3), I32), TypeRules.binary(EW_POW, ArrayType.vec(n(3), I32), lit(2)));
+        // Vec(3, Int) .* Mat(1, 2, Real) : Mat(3, 2, Real)
+        ArrayAlgebra r = TypeRules.binary(EW_MUL, ArrayAlgebra.vec(n(3), INT), mat(n(1), n(2)));
+        assertEquals(mat(n(3), n(2)), r);
+        // .^ with a non-negative integer literal exponent keeps the base algebra
+        assertEquals(ArrayAlgebra.vec(n(3), INT), TypeRules.binary(EW_POW, ArrayAlgebra.vec(n(3), INT), lit(2)));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.binary(EW_POW, ArrayAlgebra.vec(n(3), INT), lit(-1)));
+    }
+
+    // ---- 3.2 operators on algebras -----------------------------------------------------------------
+
+    @Test
+    void operatorAlgebras() {
+        // Int / Int is true division: Real
+        assertEquals(scalar(REAL), TypeRules.binary(DIV, scalar(INT), scalar(INT)));
+        // quotients and remainders keep Int
+        for (BinaryOperator op : List.of(FLOOR_DIV, TRUNC_DIV, FLOOR_MOD, TRUNC_MOD)) {
+            assertEquals(scalar(INT), TypeRules.binary(op, scalar(INT), scalar(INT)), op::toString);
+        }
+        assertEquals(scalar(REAL), TypeRules.binary(FLOOR_DIV, scalar(INT), scalar(REAL)));
+        // A ^ non-negative integer literal: A; any other exponent: A ∨ B ∨ Real
+        assertEquals(scalar(INT), TypeRules.binary(POW, scalar(INT), lit(3)));
+        assertEquals(scalar(REAL), TypeRules.binary(POW, scalar(INT), scalar(INT)));
+        assertEquals(scalar(REAL), TypeRules.binary(POW, scalar(INT), lit(-1)));
+        assertEquals(scalar(COMPLEX), TypeRules.binary(POW, scalar(COMPLEX), scalar(REAL)));
+        // Int ∨ Real = Real, Real ∨ Complex = Complex
+        assertEquals(scalar(REAL), TypeRules.binary(ADD, scalar(INT), scalar(REAL)));
+        assertEquals(COMPLEX, TypeRules.binary(ADD, scalar(COMPLEX), lit(1)).element());
+    }
+
+    @Test
+    void scalarAlgebraErrors() {
+        ArrayAlgebra b = scalar(BOOL);
+        ArrayAlgebra c = scalar(COMPLEX);
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(ADD, b, lit(1)));       // Bool vs Int
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(FLOOR_MOD, c, lit(2)));  // no %% on Complex
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(SUB, b, b));            // Bool: + * o+ only
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(POW, b, lit(2)));
+        assertThrows(VelTypeException.class, () -> TypeRules.unary(b, true));
+        // Bool: + is OR, * is AND
+        assertEquals(b, TypeRules.binary(ADD, b, b));
+        assertEquals(b, TypeRules.binary(MUL, b, b));
+    }
+
+    @Test
+    void boolXorIsElementWise() {
+        ArrayAlgebra bools = ArrayAlgebra.vec(n(3), BOOL);
+        assertEquals(bools, TypeRules.binary(XOR, bools, scalar(BOOL)));
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(XOR, mat(n(2), n(2)), mat(n(2), n(2))));
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(XOR, lit(1), lit(0)));
+    }
+
+    // ---- 3.3 constants ------------------------------------------------------------------------------
+
+    @Test
+    void literalArithmeticIsFoldedExactly() {
+        assertEquals(lit(3), TypeRules.binary(ADD, lit(1), lit(2)));
+        assertEquals(lit("0.5"), TypeRules.binary(DIV, lit(1), lit(2)));       // true division
+        assertEquals(lit("1.0"), TypeRules.binary(MUL, lit("0.5"), lit(2)));   // decimal stays decimal
+        assertEquals(ArrayAlgebra.scalar(Constant.of(BigInteger.TWO.pow(100))), TypeRules.binary(POW, lit(2), lit(100)));
+        assertEquals(lit("0.25"), TypeRules.binary(POW, lit(2), lit(-2)));
+        // 1/3 is not a finite decimal: kept as an exact fraction; (1/3) * 3 is exactly 1
+        ArrayAlgebra third = TypeRules.binary(DIV, lit(1), lit(3));
+        assertEquals(new Constant.Rational(BigInteger.ONE, BigInteger.valueOf(3)), third.constant());
+        assertEquals(lit("1"), TypeRules.binary(MUL, third, lit(3)));
+        // quotient / remainder pairs on integer constants
+        assertEquals(lit(-4), TypeRules.binary(FLOOR_DIV, lit(-7), lit(2)));
+        assertEquals(lit(1), TypeRules.binary(FLOOR_MOD, lit(-7), lit(2)));
+        assertEquals(lit(-3), TypeRules.binary(TRUNC_DIV, lit(-7), lit(2)));
+        assertEquals(lit(-1), TypeRules.binary(TRUNC_MOD, lit(-7), lit(2)));
+        assertEquals(lit(-1), TypeRules.binary(FLOOR_MOD, lit(7), lit(-2)));
+        // literal operands of /<: 2 /< 6 = 6 / 2 = 3
+        assertEquals(lit("3"), TypeRules.binary(LEFT_DIV, lit(2), lit(6)));
+        // unary minus keeps a constant a constant
+        assertEquals(lit(-1), TypeRules.unary(lit(1), true));
+        // what cannot be folded exactly is not a constant
+        assertNull(TypeRules.binary(DIV, lit(1), lit(0)).constant());
+        assertNull(TypeRules.binary(ADD, lit(1), scalar(INT)).constant());
     }
 
     // ---- matrix operators -------------------------------------------------------------------------
@@ -101,71 +196,48 @@ class TypeRulesTest {
         assertEquals(mat(n(2), n(4)), TypeRules.binary(MUL, mat(n(2), TOP), mat(n(3), n(4))));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(MUL, mat(n(2), n(3)), mat(n(2), n(3))));
         // row · column = 1x1
-        assertTrue(TypeRules.binary(MUL, mat(n(1), n(3)), ArrayType.vec(n(3), F64)).isScalar());
+        assertTrue(TypeRules.binary(MUL, mat(n(1), n(3)), ArrayAlgebra.vec(n(3), REAL)).isScalar());
         // scalar * matrix is scaling, not a product
         assertEquals(mat(n(2), n(3)), TypeRules.binary(MUL, lit(2), mat(n(2), n(3))));
     }
 
     @Test
     void matrixDivisionAndPower() {
-        ArrayType intMat = ArrayType.mat(n(2), n(2), I32);
-        // A / B = A · B⁻¹: integers become F64
-        assertEquals(ArrayType.mat(n(3), n(2), F64), TypeRules.binary(DIV, ArrayType.mat(n(3), n(2), I32), intMat));
+        ArrayAlgebra intMat = ArrayAlgebra.mat(n(2), n(2), INT);
+        // A / B = A · B⁻¹: Int becomes Real
+        assertEquals(mat(n(3), n(2)), TypeRules.binary(DIV, ArrayAlgebra.mat(n(3), n(2), INT), intMat));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(DIV, mat(n(3), n(2)), mat(n(2), n(3))));
-        // matrix / scalar is element-wise; integer / integer is true division
-        assertEquals(ArrayType.mat(n(2), n(2), F64), TypeRules.binary(DIV, intMat, lit(2)));
-        // A ^ k: square only; integer literal exponent keeps the resolution
+        // matrix / scalar is element-wise; Int / Int is true division
+        assertEquals(mat(n(2), n(2)), TypeRules.binary(DIV, intMat, lit(2)));
+        // A ^ k: square only; a non-negative integer literal exponent keeps the algebra
         assertEquals(intMat, TypeRules.binary(POW, intMat, lit(3)));
-        assertEquals(ArrayType.mat(n(2), n(2), F64), TypeRules.binary(POW, intMat, lit(-1)));
+        assertEquals(mat(n(2), n(2)), TypeRules.binary(POW, intMat, lit(-1)));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(POW, mat(n(2), n(3)), lit(2)));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(POW, intMat, intMat));
     }
 
     @Test
     void transpose() {
-        assertEquals(mat(n(1), n(3)), TypeRules.transpose(ArrayType.vec(n(3), F64)));
+        assertEquals(mat(n(1), n(3)), TypeRules.transpose(ArrayAlgebra.vec(n(3), REAL)));
         assertEquals(mat(TOP, n(2)), TypeRules.transpose(mat(n(2), TOP)));
         // rank 3 or more: the order of the indices is reversed
-        assertEquals(ArrayType.of(F64, n(4), n(3), n(2)), TypeRules.transpose(ArrayType.of(F64, n(2), n(3), n(4))));
+        assertEquals(ArrayAlgebra.of(REAL, n(4), n(3), n(2)), TypeRules.transpose(ArrayAlgebra.of(REAL, n(2), n(3), n(4))));
     }
 
     @Test
     void leftAndRightDivision() {
-        ArrayType a = mat(n(3), n(3));
-        ArrayType b = mat(n(3), n(2));
+        ArrayAlgebra a = mat(n(3), n(3));
+        ArrayAlgebra b = mat(n(3), n(2));
         // A /< B = A⁻¹ B : Mat(3, 2)
         assertEquals(mat(n(3), n(2)), TypeRules.binary(LEFT_DIV, a, b));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(LEFT_DIV, b, a));          // A not square
         assertThrows(VelTypeException.class, () -> TypeRules.binary(LEFT_DIV, a, mat(n(2), n(2)))); // rows differ
         // B' /> A = B' A⁻¹, same as /
-        ArrayType bt = TypeRules.transpose(b);
+        ArrayAlgebra bt = TypeRules.transpose(b);
         assertEquals(mat(n(2), n(3)), TypeRules.binary(RIGHT_DIV, bt, a));
         assertEquals(TypeRules.binary(DIV, bt, a), TypeRules.binary(RIGHT_DIV, bt, a));
         // scalar /< B divides every element of B
         assertEquals(b, TypeRules.binary(LEFT_DIV, lit(2), b));
-        // literal operands: 2 /< 6 = 6 / 2 = 3
-        assertEquals(ScalarType.real(Resolution.literal(new BigDecimal("3"))),
-                TypeRules.binary(LEFT_DIV, lit(2), lit(6)).element());
-    }
-
-    @Test
-    void boolXorIsElementWise() {
-        ArrayType bools = ArrayType.vec(n(3), ScalarType.BOOL);
-        assertEquals(bools, TypeRules.binary(XOR, bools, ArrayType.scalar(ScalarType.BOOL)));
-        assertThrows(VelTypeException.class, () -> TypeRules.binary(XOR, mat(n(2), n(2)), mat(n(2), n(2))));
-    }
-
-    @Test
-    void scalarTypeErrors() {
-        ArrayType b = ArrayType.scalar(ScalarType.BOOL);
-        ArrayType c = ArrayType.scalar(ScalarType.complex(Resolution.FLOAT64));
-        assertThrows(VelTypeException.class, () -> TypeRules.binary(ADD, b, lit(1)));      // Bool vs Real
-        assertThrows(VelTypeException.class, () -> TypeRules.binary(FLOOR_MOD, c, lit(2))); // no %% on Complex
-        // Real ∨ Complex = Complex
-        assertEquals(Algebra.COMPLEX, TypeRules.binary(ADD, c, lit(1)).element().algebra());
-        // 2 * j follows a partner: j's parts are integer literals
-        assertEquals(ScalarType.complex(Resolution.FLOAT32),
-                TypeRules.binary(MUL, ArrayType.scalar(F32), ArrayType.scalar(ScalarType.IMAGINARY_UNIT)).element());
     }
 
     // ---- 1.4 concatenation, tuples, ranges --------------------------------------------------------
@@ -173,10 +245,10 @@ class TypeRulesTest {
     @Test
     void blockMatrix() {
         // A: a×c, B: a×d, C: b×c, D: b×d -> (a+b)×(c+d)
-        ArrayType a = mat(n(2), n(3));
-        ArrayType b = mat(n(2), n(1));
-        ArrayType c = mat(n(4), n(3));
-        ArrayType d = mat(n(4), n(1));
+        ArrayAlgebra a = mat(n(2), n(3));
+        ArrayAlgebra b = mat(n(2), n(1));
+        ArrayAlgebra c = mat(n(4), n(3));
+        ArrayAlgebra d = mat(n(4), n(1));
         assertEquals(mat(n(6), n(4)), TypeRules.matrix(List.of(List.of(a, b), List.of(c, d))));
         assertThrows(VelTypeException.class, () -> TypeRules.matrix(List.of(List.of(a, c)))); // rows differ
         // ⊤ makes the sum ⊤
@@ -185,15 +257,14 @@ class TypeRulesTest {
 
     @Test
     void scalarLiteralsFormMatricesAndTuplesFormColumns() {
-        // [1, 2; 3, 4] : Mat(2, 2, Z32)
-        assertEquals(ArrayType.mat(n(2), n(2), I32),
+        // [1, 2; 3, 4] : Mat(2, 2, Int)
+        assertEquals(ArrayAlgebra.mat(n(2), n(2), INT),
                 TypeRules.matrix(List.of(List.of(lit(1), lit(2)), List.of(lit(3), lit(4)))));
-        // [1, x] with x: F32 -> F32
-        assertEquals(ArrayType.mat(n(1), n(2), F32),
-                TypeRules.matrix(List.of(List.of(lit(1), ArrayType.scalar(F32)))));
+        // [1, x] with x: Real -> Real
+        assertEquals(ArrayAlgebra.mat(n(1), n(2), REAL), TypeRules.matrix(List.of(List.of(lit(1), scalar(REAL)))));
         // (x, y, z) = [x; y; z] : Vec(3)
-        ArrayType x = ArrayType.scalar(F64);
-        assertEquals(ArrayType.vec(n(3), F64), TypeRules.tuple(List.of(x, x, x)));
+        ArrayAlgebra x = scalar(REAL);
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.tuple(List.of(x, x, x)));
         // a tuple of matrices of different shapes cannot be stacked (it is not a concatenation)
         assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(3), n(3)))));
     }
@@ -201,23 +272,22 @@ class TypeRulesTest {
     @Test
     void rangesHaveCardinalBounds() {
         // [0, 4): end-exclusive
-        assertEquals(ArrayType.mat(n(1), n(4), I32), TypeRules.range(lit(0), lit(4)));
-        assertEquals(ArrayType.mat(n(1), n(0), I32), TypeRules.range(lit(3), lit(1)));      // empty
-        // a non-literal bound (a variable, or end) gives length ⊤
-        assertEquals(ArrayType.mat(n(1), TOP, I32), TypeRules.range(lit(0), ArrayType.scalar(I32)));
-        // bounds must be non-negative integer scalars
-        ArrayType tenth = ArrayType.scalar(ScalarType.literal(new BigDecimal("0.1")));
-        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), tenth));
+        assertEquals(ArrayAlgebra.mat(n(1), n(4), INT), TypeRules.range(lit(0), lit(4)));
+        assertEquals(ArrayAlgebra.mat(n(1), n(0), INT), TypeRules.range(lit(3), lit(1)));      // empty
+        // a non-constant bound (a variable, or end) gives length ⊤
+        assertEquals(ArrayAlgebra.mat(n(1), TOP, INT), TypeRules.range(lit(0), scalar(INT)));
+        // bounds must be non-negative Int scalars
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), lit("0.1")));
         assertThrows(VelTypeException.class, () -> TypeRules.range(lit(-1), lit(3)));
-        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), ArrayType.scalar(F64)));
-        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), ArrayType.vec(n(2), I32)));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), scalar(REAL)));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), ArrayAlgebra.vec(n(2), INT)));
     }
 
     // ---- indexing ---------------------------------------------------------------------------------
 
     @Test
     void indexing() {
-        ArrayType m = mat(n(3), n(4));
+        ArrayAlgebra m = mat(n(3), n(4));
         Subscript row1 = Subscript.at(lit(1));
         Subscript cols = Subscript.span(TypeRules.range(lit(0), lit(2)));   // [0, 2)
         // m[i, j] is a scalar, m[1, :] a row, m[:, 0:1] a 3x2 block
@@ -225,90 +295,91 @@ class TypeRulesTest {
         assertEquals(mat(n(1), n(4)), TypeRules.index(m, List.of(row1, Subscript.all())));
         assertEquals(mat(n(3), n(2)), TypeRules.index(m, List.of(Subscript.all(), cols)));
         // a vector takes one subscript and keeps its orientation
-        ArrayType v = ArrayType.vec(n(5), F64);
+        ArrayAlgebra v = ArrayAlgebra.vec(n(5), REAL);
         assertTrue(TypeRules.index(v, List.of(Subscript.at(lit(4)))).isScalar());
-        assertEquals(ArrayType.vec(n(2), F64), TypeRules.index(v, List.of(cols)));
+        assertEquals(ArrayAlgebra.vec(n(2), REAL), TypeRules.index(v, List.of(cols)));
         assertEquals(mat(n(1), n(2)), TypeRules.index(TypeRules.transpose(v), List.of(cols)));
         // a range up to end has length ⊤
-        Subscript toEnd = Subscript.span(TypeRules.range(lit(1), ArrayType.scalar(I32)));
-        assertEquals(ArrayType.vec(TOP, F64), TypeRules.index(v, List.of(toEnd)));
-        // errors: subscript count, index type, known out of bounds
+        Subscript toEnd = Subscript.span(TypeRules.range(lit(1), scalar(INT)));
+        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.index(v, List.of(toEnd)));
+        // an Int element of another array is a valid index: a[b[i]]
+        ArrayAlgebra bi = TypeRules.index(ArrayAlgebra.vec(TOP, INT), List.of(Subscript.at(scalar(INT))));
+        assertTrue(TypeRules.index(v, List.of(Subscript.at(bi))).isScalar());
+        // errors: subscript count, index algebra, known out of bounds
         assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(row1)));
-        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(ArrayType.scalar(F64)))));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(scalar(REAL)))));
         assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(5)))));
         assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(-1)))));
     }
 
     @Test
     void indexAssignmentWidensTheVariable() {
-        ArrayType ints = ArrayType.mat(n(2), n(3), I32);
+        ArrayAlgebra ints = ArrayAlgebra.mat(n(2), n(3), INT);
         Subscript first = Subscript.at(lit(0));
-        // m[0, 0] = 5 keeps Z32; m[0, 0] = 0.5 widens the whole array to F64
+        // m[0, 0] = 5 keeps Int; m[0, 0] = 0.5 makes the whole array Real
         assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, first), lit(5)));
-        ArrayType half = ArrayType.scalar(ScalarType.literal(new BigDecimal("0.5")));
-        assertEquals(ArrayType.mat(n(2), n(3), F64), TypeRules.indexAssign(ints, List.of(first, first), half));
+        assertEquals(ArrayAlgebra.mat(n(2), n(3), REAL), TypeRules.indexAssign(ints, List.of(first, first), lit("0.5")));
         // a row region takes a matching row or a broadcast scalar
-        assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayType.mat(n(1), n(3), I32)));
+        assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayAlgebra.mat(n(1), n(3), INT)));
         assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, Subscript.all()), lit(0)));
         assertThrows(VelTypeException.class,
-                () -> TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayType.mat(n(1), n(2), I32)));
-        // the value must have a common type with the elements
-        assertThrows(VelTypeException.class,
-                () -> TypeRules.indexAssign(ints, List.of(first, first), ArrayType.scalar(ScalarType.BOOL)));
+                () -> TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayAlgebra.mat(n(1), n(2), INT)));
+        // the value must have a common algebra with the elements
+        assertThrows(VelTypeException.class, () -> TypeRules.indexAssign(ints, List.of(first, first), scalar(BOOL)));
     }
 
     @Test
     void destructuring() {
-        // (x, y, z) = (1, 2, 3): each target is a Z32 scalar
-        ArrayType value = TypeRules.tuple(List.of(lit(1), lit(2), lit(3)));
-        assertEquals(ArrayType.scalar(I32), TypeRules.destructureTuple(value, 3));
-        // [a, b; c, d] = M with M: Mat(2, 2, F64): elements
-        assertEquals(ArrayType.scalar(F64), TypeRules.destructureMatrix(mat(n(2), n(2)), 2, 2));
+        // (x, y, z) = (1, 2, 3): each target is an Int scalar
+        ArrayAlgebra value = TypeRules.tuple(List.of(lit(1), lit(2), lit(3)));
+        assertEquals(scalar(INT), TypeRules.destructureTuple(value, 3));
+        // [a, b; c, d] = M with M: Mat(2, 2, Real): elements
+        assertEquals(scalar(REAL), TypeRules.destructureMatrix(mat(n(2), n(2)), 2, 2));
         // (u, v) = M with M: Mat(2, 3): the rows, as Vec(3) (undoes the stacking of a tuple)
-        assertEquals(ArrayType.vec(n(3), F64), TypeRules.destructureTuple(mat(n(2), n(3)), 2));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.destructureTuple(mat(n(2), n(3)), 2));
         // ⊤ sizes are accepted (checked at runtime as usual), known mismatches are errors
-        assertEquals(ArrayType.scalar(F64), TypeRules.destructureTuple(ArrayType.vec(TOP, F64), 3));
-        assertThrows(VelTypeException.class, () -> TypeRules.destructureTuple(ArrayType.vec(n(2), F64), 3));
+        assertEquals(scalar(REAL), TypeRules.destructureTuple(ArrayAlgebra.vec(TOP, REAL), 3));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructureTuple(ArrayAlgebra.vec(n(2), REAL), 3));
         assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(mat(n(2), n(2)), 4, 1));
     }
 
     @Test
     void tuplesStackTheirItems() {
-        ArrayType u = ArrayType.vec(n(3), F64);
+        ArrayAlgebra u = ArrayAlgebra.vec(n(3), REAL);
         // (u, v) of Vec(3): Mat(2, 3), item i is row i
         assertEquals(mat(n(2), n(3)), TypeRules.tuple(List.of(u, u)));
         // (A, B) of Mat(2, 3): Array(2, 2, 3)
-        assertEquals(ArrayType.of(F64, n(2), n(2), n(3)), TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(2), n(3)))));
-        // items must have the same shape; ⊤ follows the usual rule; resolutions join
-        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, ArrayType.vec(n(4), F64))));
+        assertEquals(ArrayAlgebra.of(REAL, n(2), n(2), n(3)), TypeRules.tuple(List.of(mat(n(2), n(3)), mat(n(2), n(3)))));
+        // items must have the same shape; ⊤ follows the usual rule; algebras join
+        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, ArrayAlgebra.vec(n(4), REAL))));
         assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, lit(1))));
-        assertEquals(mat(n(2), TOP), TypeRules.tuple(List.of(u, ArrayType.vec(TOP, F64))));
-        assertEquals(ArrayType.vec(n(2), F64), TypeRules.tuple(List.of(lit(1), ArrayType.scalar(F64))));
+        assertEquals(mat(n(2), TOP), TypeRules.tuple(List.of(u, ArrayAlgebra.vec(TOP, REAL))));
+        assertEquals(ArrayAlgebra.vec(n(2), REAL), TypeRules.tuple(List.of(lit(1), scalar(REAL))));
         // stacking then destructuring gives the items back
         assertEquals(u, TypeRules.destructureTuple(TypeRules.tuple(List.of(u, u)), 2));
     }
 
     @Test
     void partitionedIndexingGivesABlockTensor() {
-        ArrayType m = ArrayType.mat(n(3), n(3), I32);
+        ArrayAlgebra m = ArrayAlgebra.mat(n(3), n(3), INT);
         Subscript rows023 = Subscript.partition(List.of(lit(0), lit(2), lit(3)));   // [0,2), [2,3)
         Subscript cols013 = Subscript.partition(List.of(lit(0), lit(1), lit(3)));   // [0,1), [1,3)
         // 2x2 blocks of different sizes: block indices first, block sizes ⊤
-        ArrayType t = TypeRules.index(m, List.of(rows023, cols013));
-        assertEquals(ArrayType.of(I32, n(2), n(2), TOP, TOP), t);
+        ArrayAlgebra t = TypeRules.index(m, List.of(rows023, cols013));
+        assertEquals(ArrayAlgebra.of(INT, n(2), n(2), TOP, TOP), t);
         // equal blocks keep their size: M6x6[0:2:4:6, 0:3:6] -> Array(3, 2, 2, 3)
-        ArrayType m6 = ArrayType.mat(n(6), n(6), I32);
-        ArrayType even = TypeRules.index(m6, List.of(
+        ArrayAlgebra m6 = ArrayAlgebra.mat(n(6), n(6), INT);
+        ArrayAlgebra even = TypeRules.index(m6, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))),
                 Subscript.partition(List.of(lit(0), lit(3), lit(6)))));
-        assertEquals(ArrayType.of(I32, n(3), n(2), n(2), n(3)), even);
+        assertEquals(ArrayAlgebra.of(INT, n(3), n(2), n(2), n(3)), even);
         // only the rows partitioned: Array(k, h, w), a stack of row blocks
-        ArrayType rowsOnly = TypeRules.index(m6, List.of(
+        ArrayAlgebra rowsOnly = TypeRules.index(m6, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))), Subscript.all()));
-        assertEquals(ArrayType.of(I32, n(3), n(2), n(6)), rowsOnly);
+        assertEquals(ArrayAlgebra.of(INT, n(3), n(2), n(6)), rowsOnly);
         // a vector partition is a stack of column vectors: Mat(k, h)
-        ArrayType v = ArrayType.vec(n(6), I32);
-        assertEquals(ArrayType.mat(n(3), n(2), I32), TypeRules.index(v, List.of(
+        ArrayAlgebra v = ArrayAlgebra.vec(n(6), INT);
+        assertEquals(ArrayAlgebra.mat(n(3), n(2), INT), TypeRules.index(v, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))))));
         // cut points: strictly increasing, within the size, non-negative integers
         assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(
@@ -322,89 +393,58 @@ class TypeRulesTest {
     @Test
     void blockDestructuring() {
         // [A, B; C, D] = M[0:2:3, 0:1:3]: 2x2 pattern over the block dimensions, each target a block
-        ArrayType m = ArrayType.mat(n(3), n(3), I32);
-        ArrayType t = TypeRules.index(m, List.of(
+        ArrayAlgebra m = ArrayAlgebra.mat(n(3), n(3), INT);
+        ArrayAlgebra t = TypeRules.index(m, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(3))),
                 Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
-        assertEquals(ArrayType.mat(TOP, TOP, I32), TypeRules.destructureMatrix(t, 2, 2));
+        assertEquals(ArrayAlgebra.mat(TOP, TOP, INT), TypeRules.destructureMatrix(t, 2, 2));
         assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(t, 3, 1));
-        // with the partition at hand each block gets its exact type:
+        // with the partition at hand each block gets its exact algebra:
         // A = [1; 4] (2x1), B = [2, 3; 5, 6] (2x2), C = 7 (scalar), D = [8, 9] (1x2)
-        List<List<ArrayType>> exact = TypeRules.blocks(m, List.of(
+        List<List<ArrayAlgebra>> exact = TypeRules.blocks(m, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(3))),
                 Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
-        assertEquals(ArrayType.vec(n(2), I32), exact.get(0).get(0));
-        assertEquals(ArrayType.mat(n(2), n(2), I32), exact.get(0).get(1));
+        assertEquals(ArrayAlgebra.vec(n(2), INT), exact.get(0).get(0));
+        assertEquals(ArrayAlgebra.mat(n(2), n(2), INT), exact.get(0).get(1));
         assertTrue(exact.get(1).get(0).isScalar());
-        assertEquals(ArrayType.mat(n(1), n(2), I32), exact.get(1).get(1));
+        assertEquals(ArrayAlgebra.mat(n(1), n(2), INT), exact.get(1).get(1));
         // (Top, Bottom) = M6[0:3:6, :]: tuple pattern over the stack of row blocks
-        ArrayType m6 = ArrayType.mat(n(6), n(4), F64);
-        ArrayType halves = TypeRules.index(m6, List.of(Subscript.partition(List.of(lit(0), lit(3), lit(6))), Subscript.all()));
-        assertEquals(ArrayType.mat(n(3), n(4), F64), TypeRules.destructureTuple(halves, 2));
+        ArrayAlgebra m6 = ArrayAlgebra.mat(n(6), n(4), REAL);
+        ArrayAlgebra halves = TypeRules.index(m6, List.of(Subscript.partition(List.of(lit(0), lit(3), lit(6))), Subscript.all()));
+        assertEquals(ArrayAlgebra.mat(n(3), n(4), REAL), TypeRules.destructureTuple(halves, 2));
     }
 
     @Test
     void conditional() {
-        ArrayType cond = ArrayType.scalar(ScalarType.BOOL);
-        // branches join: Z32 and F32 -> F32; literals follow their partner
-        assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, ArrayType.scalar(I32), ArrayType.scalar(F32)));
-        assertEquals(ArrayType.scalar(F32), TypeRules.conditional(cond, lit(1), ArrayType.scalar(F32)));
+        ArrayAlgebra cond = scalar(BOOL);
+        // branches join: Int and Real -> Real
+        assertEquals(scalar(REAL), TypeRules.conditional(cond, scalar(INT), scalar(REAL)));
+        assertEquals(scalar(INT), TypeRules.conditional(cond, lit(1), lit(2)));
         // shapes must agree; ⊤ follows the usual rule
-        assertEquals(ArrayType.vec(n(3), F64), TypeRules.conditional(cond, ArrayType.vec(n(3), F64), ArrayType.vec(n(3), F64)));
-        assertEquals(ArrayType.vec(TOP, F64), TypeRules.conditional(cond, ArrayType.vec(TOP, F64), ArrayType.vec(n(3), F64)));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.conditional(cond, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.conditional(cond, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
         assertThrows(VelTypeException.class,
-                () -> TypeRules.conditional(cond, ArrayType.vec(n(3), F64), ArrayType.vec(n(4), F64)));
+                () -> TypeRules.conditional(cond, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(4), REAL)));
         // the condition is a Bool scalar; Bool and numeric branches don't mix
         assertThrows(VelTypeException.class, () -> TypeRules.conditional(lit(1), lit(1), lit(2)));
         assertThrows(VelTypeException.class,
-                () -> TypeRules.conditional(ArrayType.vec(n(2), ScalarType.BOOL), lit(1), lit(2)));
+                () -> TypeRules.conditional(ArrayAlgebra.vec(n(2), BOOL), lit(1), lit(2)));
         assertThrows(VelTypeException.class, () -> TypeRules.conditional(cond, cond, lit(2)));
     }
 
-    // ---- Int scalar algebra ---------------------------------------------------------------------------
+    // ---- scalar algebras ----------------------------------------------------------------------------
 
     @Test
     void intRealComplexHierarchy() {
-        assertTrue(Algebra.INT.isSubtypeOf(Algebra.REAL));
-        assertTrue(Algebra.INT.isSubtypeOf(Algebra.COMPLEX));
-        assertTrue(Algebra.REAL.isSubtypeOf(Algebra.COMPLEX));
-        assertFalse(Algebra.REAL.isSubtypeOf(Algebra.INT));
+        assertTrue(INT.isSubtypeOf(REAL));
+        assertTrue(INT.isSubtypeOf(COMPLEX));
+        assertTrue(REAL.isSubtypeOf(COMPLEX));
+        assertFalse(REAL.isSubtypeOf(INT));
         // Bool is unrelated to the numeric algebras
-        assertFalse(Algebra.BOOL.isSubtypeOf(Algebra.INT));
-        assertFalse(Algebra.INT.isSubtypeOf(Algebra.BOOL));
-        assertThrows(VelTypeException.class, () -> Algebra.join(Algebra.BOOL, Algebra.INT));
-        assertEquals(Algebra.REAL, Algebra.join(Algebra.INT, Algebra.REAL));
-    }
-
-    @Test
-    void integerResolutionsBelongToInt() {
-        // Zn, Z+n, Z∞ only with Int; Int only with them
-        assertThrows(IllegalArgumentException.class, () -> ScalarType.real(Resolution.INT32));
-        assertThrows(IllegalArgumentException.class, () -> ScalarType.complex(Resolution.signed(16)));
-        assertThrows(IllegalArgumentException.class, () -> ScalarType.integer(Resolution.FLOAT64));
-        assertThrows(IllegalArgumentException.class, () -> ScalarType.integer(Resolution.BIG_DECIMAL));
-        // literals stay untyped: an integer literal is Int, a decimal literal is not
-        assertEquals(Algebra.INT, ScalarType.literal(BigInteger.ONE).algebra());
-        assertEquals(Algebra.REAL, ScalarType.literal(new BigDecimal("0.5")).algebra());
-    }
-
-    @Test
-    void mixingIntWithRealOrComplexMakesTheResolutionReal() {
-        // Int / Int is Real (true division)
-        assertEquals(ArrayType.scalar(F64), TypeRules.binary(DIV, ArrayType.scalar(I32), ArrayType.scalar(I32)));
-        // Int + Real joins to Real
-        assertEquals(ArrayType.scalar(F32), TypeRules.binary(ADD, ArrayType.scalar(I32), ArrayType.scalar(F32)));
-        // j * x with x: Int Z32 cannot be ⟨Complex⟩_Z32: the resolution becomes F64
-        assertEquals(ArrayType.scalar(ScalarType.complex(Resolution.FLOAT64)),
-                TypeRules.binary(MUL, ArrayType.scalar(ScalarType.IMAGINARY_UNIT), ArrayType.scalar(I32)));
-        // Z∞ becomes D∞
-        assertEquals(ScalarType.complex(Resolution.BIG_DECIMAL),
-                TypeRules.join(ScalarType.integer(Resolution.BIG_INT), ScalarType.complex(Resolution.literal(BigInteger.ONE))));
-        // Int stays Int when nothing real is involved
-        assertEquals(ArrayType.scalar(I32), TypeRules.binary(FLOOR_MOD, ArrayType.scalar(I32), lit(3)));
-        // an index must be Int
-        assertThrows(VelTypeException.class,
-                () -> TypeRules.index(ArrayType.vec(n(3), F64), List.of(Subscript.at(ArrayType.scalar(F64)))));
+        assertFalse(BOOL.isSubtypeOf(INT));
+        assertFalse(INT.isSubtypeOf(BOOL));
+        assertThrows(VelTypeException.class, () -> ScalarAlgebra.join(BOOL, INT));
+        assertEquals(REAL, ScalarAlgebra.join(INT, REAL));
     }
 
     // ---- @Dim -------------------------------------------------------------------------------------
@@ -426,11 +466,11 @@ class TypeRulesTest {
 
     @Test
     void assignability() {
-        assertTrue(ArrayType.vec(n(3), I32).isAssignableTo(ArrayType.vec(n(3), F64)));
-        assertFalse(ArrayType.vec(n(3), F64).isAssignableTo(ArrayType.vec(n(3), I32)));
-        assertTrue(ArrayType.vec(n(3), F64).isAssignableTo(ArrayType.vec(TOP, F64)));
-        assertFalse(ArrayType.vec(n(3), F64).isAssignableTo(ArrayType.vec(n(4), F64)));
-        assertTrue(ScalarType.real(Resolution.FLOAT64).isAssignableTo(ScalarType.complex(Resolution.FLOAT64)));
-        assertFalse(ScalarType.complex(Resolution.FLOAT64).isAssignableTo(ScalarType.real(Resolution.FLOAT64)));
+        assertTrue(ArrayAlgebra.vec(n(3), INT).isAssignableTo(ArrayAlgebra.vec(n(3), REAL)));
+        assertFalse(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(n(3), INT)));
+        assertTrue(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(TOP, REAL)));
+        assertFalse(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(n(4), REAL)));
+        assertTrue(scalar(REAL).isAssignableTo(scalar(COMPLEX)));
+        assertFalse(scalar(COMPLEX).isAssignableTo(scalar(REAL)));
     }
 }

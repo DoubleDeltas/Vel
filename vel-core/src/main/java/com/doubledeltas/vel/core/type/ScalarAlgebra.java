@@ -2,10 +2,11 @@ package com.doubledeltas.vel.core.type;
 
 /**
  * Scalar algebra (type-system.md 0.2, 1.1): the atomic algebra that decides what the arithmetic means.
- * A scalar algebra has no resolution; with one it becomes a {@link ScalarType}.
+ * A scalar algebra has no resolution; resolutions belong to concretization
+ * ({@link com.doubledeltas.vel.core.concretization.ScalarType}).
  * {@code Int <: Real <: Complex}; {@code Bool} is unrelated to the others.
  */
-public enum Algebra {
+public enum ScalarAlgebra {
     BOOL("Bool"),
     INT("Int"),
     REAL("Real"),
@@ -13,11 +14,11 @@ public enum Algebra {
 
     private final String symbol;
 
-    Algebra(String symbol) {
+    ScalarAlgebra(String symbol) {
         this.symbol = symbol;
     }
 
-    public boolean isSubtypeOf(Algebra other) {
+    public boolean isSubtypeOf(ScalarAlgebra other) {
         if (this == other) {
             return true;
         }
@@ -25,7 +26,7 @@ public enum Algebra {
     }
 
     /** {@code a ∨ b} (type-system.md 3.1). Bool has no join with a numeric algebra. */
-    public static Algebra join(Algebra a, Algebra b) {
+    public static ScalarAlgebra join(ScalarAlgebra a, ScalarAlgebra b) {
         if (a.isSubtypeOf(b)) {
             return b;
         }
