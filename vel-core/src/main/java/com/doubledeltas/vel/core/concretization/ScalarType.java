@@ -12,11 +12,13 @@ import com.doubledeltas.vel.core.type.ScalarAlgebra;
 public record ScalarType(ScalarAlgebra algebra, Resolution resolution) {
 
     public static final ScalarType BOOL = new ScalarType(ScalarAlgebra.BOOL, Resolution.BOOL);
+    public static final ScalarType CARD = new ScalarType(ScalarAlgebra.CARD, Resolution.CARD);
 
     /**
      * Valid combinations (type-system.md 2): {@code Bool} only with the Bool resolution; integer
      * resolutions ({@code Zn}, {@code Z+n}, {@code Z∞}) only with {@code Int}; {@code Int} only with
-     * those; {@code Real} and {@code Complex} with {@code Fn}, {@code Dn}, {@code D∞}.
+     * those; {@code Real} and {@code Complex} with {@code Fn}, {@code Dn}, {@code D∞}; {@code Card}
+     * only with the Card resolution.
      */
     public ScalarType {
         if (!isValid(algebra, resolution)) {
@@ -27,6 +29,9 @@ public record ScalarType(ScalarAlgebra algebra, Resolution resolution) {
     private static boolean isValid(ScalarAlgebra algebra, Resolution r) {
         if (algebra == ScalarAlgebra.BOOL || r instanceof Resolution.Bool) {
             return algebra == ScalarAlgebra.BOOL && r instanceof Resolution.Bool;
+        }
+        if (algebra == ScalarAlgebra.CARD || r instanceof Resolution.CardRes) {
+            return algebra == ScalarAlgebra.CARD && r instanceof Resolution.CardRes;
         }
         return algebra == ScalarAlgebra.INT ? r.isInteger() : r.isFloating();
     }

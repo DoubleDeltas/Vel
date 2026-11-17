@@ -33,6 +33,8 @@ public final class Promotion {
 
     /** {@code a ⊑ b}: every value of {@code a} is exactly representable in {@code b}. */
     public static boolean isRepresentable(Resolution a, Resolution b) {
+        a = arithmetic(a);
+        b = arithmetic(b);
         if (a.equals(b)) {
             return true;
         }
@@ -158,6 +160,8 @@ public final class Promotion {
     }
 
     public static Resolution join(Resolution x, Resolution y) {
+        x = arithmetic(x);
+        y = arithmetic(y);
         if (x instanceof Bool || y instanceof Bool) {
             if (x instanceof Bool && y instanceof Bool) {
                 return x;
@@ -216,8 +220,8 @@ public final class Promotion {
             return power(a, b);
         }
         Resolution[] c = resolve(a, b);
-        Resolution x = c[0];
-        Resolution y = c[1];
+        Resolution x = arithmetic(c[0]);
+        Resolution y = arithmetic(c[1]);
         if (x instanceof Bool || y instanceof Bool) {
             return join(x, y); // + is OR, * is AND, o+ is XOR
         }
@@ -250,6 +254,11 @@ public final class Promotion {
             return widen(new FixedInt(f.bits() + 1, true));
         }
         return widen(a);
+    }
+
+    /** ⟨Card⟩ is computed as Z32 in Java (java.md 7.1). */
+    private static Resolution arithmetic(Resolution r) {
+        return r instanceof Resolution.CardRes ? Resolution.INT32 : r;
     }
 
     /** Applies the minimum arithmetic width to fixed-width integers. */

@@ -23,6 +23,8 @@ public final class TypeRules {
      * non-negative integer literal ({@code A ∨ B ∨ Real}); {@link #binary} handles the literal case.
      */
     public static ScalarAlgebra arithmetic(Arithmetic op, ScalarAlgebra a, ScalarAlgebra b) {
+        a = a.arithmetic(); // Card is computed as Int (type-system.md 1.1)
+        b = b.arithmetic();
         if (a == ScalarAlgebra.BOOL || b == ScalarAlgebra.BOOL) {
             ScalarAlgebra.join(a, b); // Bool with a numeric algebra: no join
             // Bool: + is OR, * is AND, o+ is XOR (type-system.md footnote 1)
@@ -212,16 +214,17 @@ public final class TypeRules {
 
     /**
      * Algebra of a range {@code start:end} = [start, end) (end-exclusive, as in Python): a row vector of
-     * Int indices. Both bounds are cardinals (non-negative Int scalars). The length is known only when
-     * both bounds are integer constants ({@code max(0, end - start)}); otherwise it is ⊤.
+     * Int indices. Both bounds are in index position: cardinals, or Int scalars converted to cardinals.
+     * The length is {@code end - start}, which is ⊥ (null) when {@code end < start}; it is known only
+     * when both bounds are integer constants (and then ⊥ is a compile error), otherwise it is ⊤.
      */
     public static ArrayAlgebra range(ArrayAlgebra start, ArrayAlgebra end) {
         requireCard(start, "range bound");
         requireCard(end, "range bound");
         Card length = Card.TOP;
         if (start.constant() instanceof Constant.Int s && end.constant() instanceof Constant.Int e) {
-            BigInteger n = e.value().subtract(s.value());
-            length = Card.of(n.signum() > 0 ? n.longValueExact() : 0);
+            length = Card.of(e.value().longValueExact()).minus(Card.of(s.value().longValueExact()))
+                    .requireValid("length of the range " + s + ":" + e);
         }
         return ArrayAlgebra.mat(Card.ONE, length, ScalarAlgebra.INT);
     }
@@ -423,13 +426,16 @@ public final class TypeRules {
         return new Selection(Card.of(first.longValueExact()), blocks);
     }
 
-    /** A cardinal: a non-negative Int scalar. */
+    /**
+     * Index position: a Card scalar, or an Int scalar converted to Card (type-system.md 1.1). A negative
+     * Int becomes ⊥ (null); when the value is a known constant this is a compile error.
+     */
     private static void requireCard(ArrayAlgebra t, String what) {
-        if (!t.isScalar() || t.element() != ScalarAlgebra.INT) {
-            throw new VelTypeException(what + " must be a non-negative Int scalar, not " + t);
+        if (!t.isScalar() || (t.element() != ScalarAlgebra.CARD && t.element() != ScalarAlgebra.INT)) {
+            throw new VelTypeException(what + " must be a Card or Int scalar, not " + t);
         }
         if (t.constant() instanceof Constant.Int lit && lit.value().signum() < 0) {
-            throw new VelTypeException(what + " must not be negative: " + lit.value());
+            throw new VelTypeException(what + " " + lit.value() + " is ⊥ (null)");
         }
     }
 }

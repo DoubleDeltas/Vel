@@ -62,7 +62,13 @@ $$ [\mathbb K]:=\mathrm{Mat}(1,1,\mathbb K) $$
 $$ \mathrm{Card} := 0 \mid \mathbb{N} \mid \top \mid \bot $$
 $\bot$을 뺀 원소는 다음과 같이 순서를 가진다.
 $$ 0 < 1 < 2 < \cdots < \top$$
-$\bot$은 이 순서 위에 있지 않으며, **유효하지 않은 인덱스**를 뜻한다.
+$\bot$은 이 순서 위에 있지 않으며, **유효하지 않은 인덱스**를 뜻한다. $\bot$은 서수에서 **null과 같은 역할**을 한다.
+- 결과가 서수가 될 수 없는 연산은 $\bot$을 낸다. 예: $m > n$일 때 $n - m = \bot$
+- $\bot$을 인덱스나 차원 크기로 쓰거나 연산에 쓰면, null 원소를 연산에 쓸 때(1.2절)와 같이 `NullPointerException`이 발생한다. 컴파일 타임에 $\bot$임을 알 수 있으면 컴파일 오류다.
+
+$\mathrm{Card}$는 $\mathrm{Int}$의 하위 대수가 아니다($\top$, $\bot$은 정수가 아니다). 대신 다음과 같이 변환한다.
+- **인덱스 자리**(인덱스, 범위 경계, 분할점)에서는 $\mathrm{Int}$를 $\mathrm{Card}$로 변환한다. 음수는 $\bot$이 된다. 예: `b`가 `int[]`이어도 `a[b[i]]`를 쓸 수 있다.
+- **산술**에서는 $\mathrm{Card}$를 $\mathrm{Int}$로 변환해 계산한다. 예: `end - 1`은 $\mathrm{Int}$다.
 
 수치 대수는 아래와 같은 자명한 위계를 갖는다.
 $$\mathrm{Int} <: \mathrm{Real} <: \mathrm{Complex}$$
@@ -137,8 +143,9 @@ b[0] = 9      # b = (9, 2, 3), a는 여전히 (1, 2, 3)
 
 ### 1.6. 범위와 인덱싱
 **범위** `a:b`는 끝을 포함하지 않는 구간 $[a, b)$의 인덱스로 이루어진 행벡터다(Python과 같음).
-- 경계 $a$, $b$는 서수($\mathrm{Int}$ 스칼라이며 0 이상)여야 한다. 인덱스 안의 `end`는 그 차원의 **길이**다. 그래서 `a:end`는 끝까지이고, 마지막 원소의 인덱스는 `end-1`이다.
-- 길이는 두 경계가 모두 정수 리터럴이면 $\max(0, b - a)$이고, 그 외(변수, `end`)에는 $\top$이다.
+- 경계 $a$, $b$는 서수다. 인덱스 자리이므로 $\mathrm{Int}$ 스칼라도 쓸 수 있으며 $\mathrm{Card}$로 변환된다(1.1절, 음수는 $\bot$). 인덱스 안의 `end`는 그 차원의 **길이**다. 그래서 `a:end`는 끝까지이고, 마지막 원소의 인덱스는 `end-1`이다.
+- 길이는 서수의 뺄셈 $b - a$다. $b < a$면 길이는 $\bot$(null)이다(1.1절). 빈 범위는 `a:a`로 쓴다.
+- 두 경계가 모두 정수 리터럴이면 길이가 컴파일 타임에 정해지며, $\bot$이면 컴파일 오류다. 그 외(변수, `end`)에는 길이가 $\top$이다.
 - 증분 형태는 없다.
 
 **인덱싱** `m[s₁, …, sₖ]`의 각 첨자는 다음 중 하나다.
@@ -222,8 +229,9 @@ $$ \langle \mathrm{Func}(A, B) \rangle_{\mathrm{Func}(R_A, R_B)} = \mathrm{Func}
 | $\mathrm{Bool}$ | (없음) |
 | $\mathrm{Int}$ | $\mathrm{Z}n$, $\mathrm{Z}^{+}n$, $\mathrm{Z}\infty$ |
 | $\mathrm{Real}$, $\mathrm{Complex}$ | $\mathrm{F}n$, $\mathrm{D}n$, $\mathrm{D}\infty$ |
+| $\mathrm{Card}$ | (없음) |
 
-즉 정수 해상도 $\mathrm{Z}n$, $\mathrm{Z}^{+}n$, $\mathrm{Z}\infty$는 $\mathrm{Int}$ 전용이다.
+즉 정수 해상도 $\mathrm{Z}n$, $\mathrm{Z}^{+}n$, $\mathrm{Z}\infty$는 $\mathrm{Int}$ 전용이다. $\mathrm{Bool}$과 $\mathrm{Card}$의 해상도는 하나로 고정되어 있으며, 타입은 $\langle\mathrm{Bool}\rangle$, $\langle\mathrm{Card}\rangle$로 쓴다.
 
 Java/Kotlin 타입과의 구체적인 대응은 `./type-mapping`에 둔다.
 

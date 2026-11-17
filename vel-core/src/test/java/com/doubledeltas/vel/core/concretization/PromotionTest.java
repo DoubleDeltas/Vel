@@ -234,6 +234,17 @@ class PromotionTest {
     }
 
     @Test
+    void cardHasASingleResolutionComputedAsInt() {
+        assertEquals(ScalarType.CARD, new ScalarType(ScalarAlgebra.CARD, Resolution.CARD));
+        assertThrows(IllegalArgumentException.class, () -> new ScalarType(ScalarAlgebra.CARD, INT32));
+        assertThrows(IllegalArgumentException.class, () -> ScalarType.integer(Resolution.CARD));
+        // in Java, ⟨Card⟩ is int: arithmetic as Z32
+        assertEquals(INT32, arithmetic(SUB, r(Resolution.CARD), lit(1)));
+        assertEquals(INT64, arithmetic(ADD, r(Resolution.CARD), r(INT64)));
+        assertEquals(FLOAT64, arithmetic(DIV, r(Resolution.CARD), r(Resolution.CARD)));
+    }
+
+    @Test
     void scalarTypeAssignability() {
         assertTrue(ScalarType.integer(INT32).isAssignableTo(ScalarType.real(FLOAT64)));
         assertFalse(ScalarType.real(FLOAT64).isAssignableTo(ScalarType.integer(INT32)));

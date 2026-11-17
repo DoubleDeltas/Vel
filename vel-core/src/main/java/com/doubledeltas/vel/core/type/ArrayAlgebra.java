@@ -62,6 +62,9 @@ public record ArrayAlgebra(List<Card> dims, ScalarAlgebra element, Constant cons
         if (dims.isEmpty()) {
             throw new IllegalArgumentException("an array has at least one dimension");
         }
+        for (Card c : dims) {
+            c.requireValid("dimension size");
+        }
         List<Card> d = new ArrayList<>(dims);
         while (d.size() < 2) {
             d.add(Card.ONE);

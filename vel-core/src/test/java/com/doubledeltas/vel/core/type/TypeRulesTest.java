@@ -73,6 +73,33 @@ class TypeRulesTest {
         assertEquals(TOP, n(2).plus(TOP));
         assertEquals(TOP, n(2).max(TOP));
         assertEquals(n(3), n(2).max(n(3)));
+        // ⊥ is null: a result that cannot be a cardinal, and an error once used
+        assertEquals(n(1), n(3).minus(n(2)));
+        assertEquals(Card.BOTTOM, n(2).minus(n(3)));
+        assertEquals(Card.BOTTOM, Card.of(-1));
+        assertEquals(TOP, TOP.minus(n(2)));
+        assertThrows(VelTypeException.class, () -> Card.BOTTOM.plus(n(1)));
+        assertThrows(VelTypeException.class, () -> n(1).max(Card.BOTTOM));
+        assertThrows(VelTypeException.class, () -> ArrayAlgebra.vec(Card.BOTTOM, REAL));
+    }
+
+    @Test
+    void cardConvertsToIntInArithmeticAndFromIntInIndexPositions() {
+        ArrayAlgebra size = scalar(ScalarAlgebra.CARD);
+        // end - 1 is Int; Card is not a subtype of Int
+        assertEquals(scalar(INT), TypeRules.binary(SUB, size, lit(1)));
+        assertEquals(scalar(INT), TypeRules.binary(ADD, size, size));
+        assertEquals(scalar(REAL), TypeRules.binary(DIV, size, lit(2)));
+        assertFalse(ScalarAlgebra.CARD.isSubtypeOf(INT));
+        assertFalse(INT.isSubtypeOf(ScalarAlgebra.CARD));
+        assertEquals(ScalarAlgebra.CARD, ScalarAlgebra.join(ScalarAlgebra.CARD, ScalarAlgebra.CARD));
+        assertEquals(INT, ScalarAlgebra.join(ScalarAlgebra.CARD, INT));
+        assertThrows(VelTypeException.class, () -> ScalarAlgebra.join(ScalarAlgebra.CARD, BOOL));
+        // Card and Int both index; a known negative Int is ⊥ (a compile error)
+        ArrayAlgebra v = ArrayAlgebra.vec(n(5), REAL);
+        assertTrue(TypeRules.index(v, List.of(Subscript.at(size))).isScalar());
+        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.index(v, List.of(Subscript.span(TypeRules.range(lit(0), size)))));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(-1)))));
     }
 
     @Test
@@ -273,7 +300,9 @@ class TypeRulesTest {
     void rangesHaveCardinalBounds() {
         // [0, 4): end-exclusive
         assertEquals(ArrayAlgebra.mat(n(1), n(4), INT), TypeRules.range(lit(0), lit(4)));
-        assertEquals(ArrayAlgebra.mat(n(1), n(0), INT), TypeRules.range(lit(3), lit(1)));      // empty
+        assertEquals(ArrayAlgebra.mat(n(1), n(0), INT), TypeRules.range(lit(3), lit(3)));      // empty: a:a
+        // end < start: the length is ⊥ (null), a compile error when known
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(3), lit(1)));
         // a non-constant bound (a variable, or end) gives length ⊤
         assertEquals(ArrayAlgebra.mat(n(1), TOP, INT), TypeRules.range(lit(0), scalar(INT)));
         // bounds must be non-negative Int scalars

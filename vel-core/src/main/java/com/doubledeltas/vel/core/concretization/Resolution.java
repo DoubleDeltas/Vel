@@ -8,6 +8,7 @@ package com.doubledeltas.vel.core.concretization;
 public sealed interface Resolution {
 
     Resolution BOOL = new Bool();
+    Resolution CARD = new CardRes();
     Resolution INT32 = new FixedInt(32, true);
     Resolution INT64 = new FixedInt(64, true);
     Resolution BIG_INT = new BigInt();
@@ -36,6 +37,14 @@ public sealed interface Resolution {
         @Override
         public String toString() {
             return "Bool";
+        }
+    }
+
+    /** ⟨Card⟩: the single resolution of cardinals. Java concretizes it to {@code int} (java.md 7.1). */
+    record CardRes() implements Resolution {
+        @Override
+        public String toString() {
+            return "Card";
         }
     }
 
