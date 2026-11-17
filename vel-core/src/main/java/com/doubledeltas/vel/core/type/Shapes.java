@@ -69,15 +69,24 @@ public final class Shapes {
         return List.of(a.rows(), b.cols());
     }
 
+    /** {@code A /< B = A⁻¹ · B}: A is square and has as many rows as B. */
+    public static List<Card> leftDivide(ArrayType a, ArrayType b) {
+        requireMatrix(a, "matrix division");
+        requireMatrix(b, "matrix division");
+        Card n = unify(a.rows(), a.cols(), "divisor must be square:");
+        unify(n, b.rows(), "rows of matrix division");
+        return List.of(a.cols(), b.cols());
+    }
+
     /** A square matrix (for matrix power). */
     public static void requireSquare(ArrayType a, String operation) {
         requireMatrix(a, operation);
         unify(a.rows(), a.cols(), operation + " needs a square matrix:");
     }
 
+    /** Reverses the order of the dimensions: a matrix is transposed, a tensor of rank 3 or more is reversed. */
     public static List<Card> transpose(ArrayType a) {
-        requireMatrix(a, "transpose");
-        return List.of(a.cols(), a.rows());
+        return a.dims().reversed();
     }
 
     /** {@code [A, B]}: same number of rows, columns add up. */

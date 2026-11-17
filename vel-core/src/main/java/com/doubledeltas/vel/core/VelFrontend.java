@@ -23,14 +23,16 @@ public final class VelFrontend {
     private VelFrontend() {
     }
 
-    /** Parses a {@code @Vel} method body. */
+    /** Parses a {@code @Vel} method body and checks its structure (see {@link StructureChecker}). */
     public static ParseResult<VelParser.ProgramContext> parseProgram(String source) {
-        return parse(source, VelParser::program);
+        ParseResult<VelParser.ProgramContext> result = parse(source, VelParser::program);
+        return result.hasErrors() ? result : result.with(StructureChecker.checkProgram(result.tree()));
     }
 
-    /** Parses an inline {@code vel("...")} expression. */
+    /** Parses an inline {@code vel("...")} expression and checks its structure. */
     public static ParseResult<VelParser.SingleExpressionContext> parseExpression(String source) {
-        return parse(source, VelParser::singleExpression);
+        ParseResult<VelParser.SingleExpressionContext> result = parse(source, VelParser::singleExpression);
+        return result.hasErrors() ? result : result.with(StructureChecker.checkExpression(result.tree()));
     }
 
     private static <T extends ParserRuleContext> ParseResult<T> parse(

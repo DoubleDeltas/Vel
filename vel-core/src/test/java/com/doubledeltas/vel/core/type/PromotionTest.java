@@ -182,11 +182,54 @@ class PromotionTest {
         assertEquals(INT64, Promotion.defaultOf(lit(Integer.MAX_VALUE + 1L)));
         assertEquals(BIG_INT, Promotion.defaultOf(Resolution.literal(BigInteger.TWO.pow(63))));
         assertEquals(FLOAT64, Promotion.defaultOf(lit("1.5")));
-        // two literals use their defaults
-        assertEquals(INT32, arithmetic(ADD, lit(1), lit(2)));
-        assertEquals(FLOAT64, arithmetic(DIV, lit(1), lit(2)));
         // unary minus keeps a literal a literal, so x * -1 still follows x
         assertEquals(lit(-1), Promotion.negate(lit(1), true));
         assertEquals(signed(64), arithmetic(MUL, INT64, Promotion.negate(lit(1), true)));
+    }
+
+    // ---- exact folding of literal arithmetic (intermediate results keep the highest precision) ----
+
+    @Test
+    void literalArithmeticIsFoldedExactly() {
+        assertEquals(lit(3), arithmetic(ADD, lit(1), lit(2)));
+        assertEquals(lit("0.5"), arithmetic(DIV, lit(1), lit(2)));           // true division
+        assertEquals(lit("1.0"), arithmetic(MUL, lit("0.5"), lit(2)));       // decimal stays decimal
+        assertEquals(Resolution.literal(BigInteger.TWO.pow(100)), arithmetic(POW, lit(2), lit(100)));
+        assertEquals(lit("0.25"), arithmetic(POW, lit(2), lit(-2)));
+        // 1/3 is not a finite decimal: kept as an exact fraction
+        Resolution third = arithmetic(DIV, lit(1), lit(3));
+        assertEquals(new Resolution.RationalLiteral(BigInteger.ONE, BigInteger.valueOf(3)), third);
+        // (1/3) * 3 is exactly 1 (a decimal constant, since it came from a true division)
+        assertEquals(lit("1"), arithmetic(MUL, third, lit(3)));
+        // quotient / remainder pairs on integer literals
+        assertEquals(lit(-4), arithmetic(Promotion.Arithmetic.FLOOR_DIV, lit(-7), lit(2)));
+        assertEquals(lit(1), arithmetic(FLOOR_MOD, lit(-7), lit(2)));
+        assertEquals(lit(-3), arithmetic(Promotion.Arithmetic.TRUNC_DIV, lit(-7), lit(2)));
+        assertEquals(lit(-1), arithmetic(Promotion.Arithmetic.TRUNC_MOD, lit(-7), lit(2)));
+        assertEquals(lit(-1), arithmetic(FLOOR_MOD, lit(7), lit(-2)));
+    }
+
+    @Test
+    void foldedConstantsFollowTheirPartner() {
+        // 0.5 * 2 * x with x: F(32) -> F(32): the constant 1.0 is exact and follows x
+        Resolution one = arithmetic(MUL, lit("0.5"), lit(2));
+        assertEquals(FLOAT32, arithmetic(MUL, one, FLOAT32));
+        // x * (1/3) with x: F(64) -> F(64); with x: D(∞) the fraction stays exact
+        Resolution third = arithmetic(DIV, lit(1), lit(3));
+        assertEquals(FLOAT64, arithmetic(MUL, FLOAT64, third));
+        assertEquals(BIG_DECIMAL, arithmetic(MUL, BIG_DECIMAL, third));
+        assertTrue(isRepresentable(third, BIG_DECIMAL));
+        assertFalse(isRepresentable(third, FLOAT64));
+        // without a partner a fraction defaults like a decimal literal
+        assertEquals(FLOAT64, Promotion.defaultOf(third));
+        // division by a zero constant is not folded
+        assertEquals(FLOAT64, arithmetic(DIV, lit(1), lit(0)));
+    }
+
+    @Test
+    void boolXor() {
+        assertEquals(BOOL, arithmetic(Promotion.Arithmetic.XOR, BOOL, BOOL));
+        assertThrows(VelTypeException.class, () -> arithmetic(Promotion.Arithmetic.XOR, INT32, INT32));
+        assertThrows(VelTypeException.class, () -> arithmetic(Promotion.Arithmetic.XOR, lit(1), lit(0)));
     }
 }

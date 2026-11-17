@@ -18,6 +18,7 @@ grammar Vel;
     private boolean continuesLine() {
         switch (lastType) {
             case PLUS: case MINUS: case STAR: case SLASH: case SLASH_SLASH: case SLASH_SLASH_SLASH:
+            case SLASH_LT: case SLASH_GT: case XOR: case XOR_ASSIGN:
             case PERCENT_PERCENT: case PERCENT_PERCENT_PERCENT: case CARET:
             case DOT_PLUS: case DOT_MINUS: case DOT_STAR: case DOT_SLASH: case DOT_CARET:
             case ASSIGN: case PLUS_ASSIGN: case MINUS_ASSIGN: case STAR_ASSIGN: case SLASH_ASSIGN:
@@ -61,7 +62,7 @@ statement
     : 'return' expr                                         # returnStmt
     | target op=( '='
                 | '+=' | '-=' | '*=' | '/=' | '//=' | '///=' | '%%=' | '%%%=' | '^='
-                | '.+=' | '.-=' | '.*=' | './=' | '.^=' ) expr  # assignStmt
+                | '.+=' | '.-=' | '.*=' | './=' | '.^=' | 'o+=' ) expr  # assignStmt
     | expr                                                  # exprStmt
     ;
 
@@ -79,11 +80,16 @@ target
 // Operators follow MATLAB:
 //   *  /  ^    matrix product / right division / matrix power (scalar operands: ordinary arithmetic;
 //              `/` on scalars is true division)
+//   />         right division A/>B = A B^-1 (B square), same as /
+//   /<         left division  A/<B = A^-1 B (A square)
 //   .* ./ .^   element-wise
 //   .+ .-      aliases of + and - (which are already element-wise), for symmetry
 //   '          conjugate transpose (same as .' for real values)
 //   .'         transpose
-//   a:b a:s:b  inclusive range (lowest precedence: `a+1:b-1` == `(a+1):(b-1)`)
+//   a:b        inclusive range of indices (lowest precedence: `a+1:b-1` == `(a+1):(b-1)`).
+//              There is no step form a:s:b, and a range cannot contain a range.
+// Bool:
+//   o+         exclusive or (⊕), additive precedence; + is OR and * is AND on Bool
 // Integer-style division comes in two pairs; the number of symbols tells the rounding:
 //   // and %%    floor: quotient toward -infinity, remainder has the divisor's sign
 //                (Python // and %, Java Math.floorDiv / Math.floorMod)
@@ -98,9 +104,8 @@ expr
     | expr op=('\'' | '.\'')                                # transposeExpr
     | <assoc=right> expr op=('^' | '.^') expr               # powExpr
     | op=('-' | '+') expr                                   # unaryExpr
-    | expr op=('*' | '/' | '//' | '///' | '%%' | '%%%' | '.*' | './') expr  # mulExpr
-    | expr op=('+' | '-' | '.+' | '.-') expr                # addExpr
-    | expr ':' expr ':' expr                                # rangeStepExpr
+    | expr op=('*' | '/' | '/>' | '/<' | '//' | '///' | '%%' | '%%%' | '.*' | './') expr  # mulExpr
+    | expr op=('+' | '-' | '.+' | '.-' | 'o+') expr         # addExpr
     | expr ':' expr                                         # rangeExpr
     ;
 
@@ -119,7 +124,7 @@ arguments
     : expr (',' expr)*
     ;
 
-/** MATLAB-style subscripts: an index, a range (`1:3`, `0:2:end`), or `:` for the whole dimension. */
+/** MATLAB-style subscripts: an index, a range (`1:3`, `0:end`), or `:` for the whole dimension. */
 indexList
     : index (',' index)*
     ;
@@ -171,6 +176,8 @@ PLUS            : '+' ;
 MINUS           : '-' ;
 STAR            : '*' ;
 SLASH           : '/' ;
+SLASH_GT        : '/>' ;
+SLASH_LT        : '/<' ;
 SLASH_SLASH       : '//' ;
 SLASH_SLASH_SLASH : '///' ;
 PERCENT_PERCENT         : '%%' ;
@@ -198,6 +205,13 @@ DOT_MINUS_ASSIGN       : '.-=' ;
 DOT_STAR_ASSIGN        : '.*=' ;
 DOT_SLASH_ASSIGN       : './=' ;
 DOT_CARET_ASSIGN       : '.^=' ;
+XOR_ASSIGN             : 'o+=' ;
+
+/**
+ * Bool exclusive or (⊕, "o-plus"). Being longer than the identifier `o`, it wins when a variable
+ * named `o` is directly followed by '+': write `o + 1` (or `o`+1 with backticks) in that case.
+ */
+XOR : 'o+' ;
 
 DOT : '.' ;
 

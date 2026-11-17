@@ -132,16 +132,17 @@ class VelFrontendTest {
 
     @Test
     void multiLineBlockCommentSeparatesStatements() {
-        var result = VelFrontend.parseProgram("x = 1 /* one\n two */ y = 2 /* same line */ + 1");
+        var result = VelFrontend.parseProgram("x = 1 /* one\n two */ y = 2 /* same line */ + 1\nreturn y");
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
-        assertEquals(2, result.tree().statement().size());
+        assertEquals(3, result.tree().statement().size());
     }
 
     @Test
-    void rangesAreInclusiveMatlabStyleWithLowestPrecedence() {
+    void rangesAreInclusiveWithLowestPrecedence() {
         assertEquals("(singleExpression (expr (expr (primary a)) : (expr (primary b))) <EOF>)", tree("a:b"));
-        assertEquals("(singleExpression (expr (expr (primary 0)) : (expr (primary 0.1)) : (expr (primary 1))) <EOF>)",
-                tree("0:0.1:1"));
+        // only a:b: no step form, no range inside a range
+        assertTrue(VelFrontend.parseExpression("0:2:10").hasErrors());
+        assertTrue(VelFrontend.parseExpression("a:b:c:d").hasErrors());
         // a+1:b-1 == (a+1):(b-1)
         assertEquals("(singleExpression (expr (expr (expr (primary a)) + (expr (primary 1))) : (expr (expr (primary b)) - (expr (primary 1)))) <EOF>)",
                 tree("a+1:b-1"));
@@ -182,7 +183,7 @@ class VelFrontendTest {
         assertEquals("(singleExpression (expr (primary `f` ( (arguments (expr (primary x))) ))) <EOF>)",
                 tree("`f`(x)"));
         for (String src : new String[] {"`j` = 1", "`end`[0] += 1", "`θ` = 2"}) {
-            var result = VelFrontend.parseProgram(src);
+            var result = VelFrontend.parseProgram(src + "\nreturn 0");
             assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
         }
         // only a Java identifier may be quoted
@@ -196,6 +197,11 @@ class VelFrontendTest {
         // all share the multiplicative precedence, left-associative
         assertEquals("(singleExpression (expr (expr (expr (expr (primary a)) // (expr (primary b))) %% (expr (primary c))) %%% (expr (primary d))) <EOF>)",
                 tree("a // b %% c %%% d"));
+        // matrix right / left division
+        assertEquals("(singleExpression (expr (expr (expr (primary A)) /> (expr (primary B))) /< (expr (primary C))) <EOF>)",
+                tree("A /> B /< C"));
+        // a/<b is one token, not / followed by something
+        assertEquals("(singleExpression (expr (expr (primary A)) /< (expr (primary b))) <EOF>)", tree("A/<b"));
         // a single % does not exist
         assertTrue(VelFrontend.parseExpression("a % b").hasErrors());
         assertTrue(VelFrontend.parseProgram("x %= 2").hasErrors());
@@ -206,15 +212,15 @@ class VelFrontendTest {
 
     @Test
     void hashStartsLineComment() {
-        var result = VelFrontend.parseProgram("x = 1 # comment\ny = x //\n    2");
+        var result = VelFrontend.parseProgram("x = 1 # comment\ny = x //\n    2\nreturn y");
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
-        assertEquals(2, result.tree().statement().size());
+        assertEquals(3, result.tree().statement().size());
     }
 
     @Test
     void indexAndSubMatrixAssignment() {
         for (String src : new String[] {"m[0, 1] = 2", "m[0:2, :] = B", "v[end] += 1", "m[:, j] .*= 3"}) {
-            var result = VelFrontend.parseProgram(src);
+            var result = VelFrontend.parseProgram(src + "\nreturn m");
             assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
         }
         // member assignment is not allowed
@@ -228,12 +234,45 @@ class VelFrontendTest {
     }
 
     @Test
+    void boolXorHasAdditivePrecedence() {
+        // a o+ b * c == a o+ (b * c); a + b o+ c == (a + b) o+ c
+        assertEquals("(singleExpression (expr (expr (primary a)) o+ (expr (expr (primary b)) * (expr (primary c)))) <EOF>)",
+                tree("a o+ b * c"));
+        assertEquals("(singleExpression (expr (expr (expr (primary a)) + (expr (primary b))) o+ (expr (primary c))) <EOF>)",
+                tree("a + b o+ c"));
+        // identifiers starting with o are unaffected; only a bare `o` directly followed by + is ⊕
+        assertEquals("(singleExpression (expr (expr (primary ox)) + (expr (primary 1))) <EOF>)", tree("ox+1"));
+        assertEquals("(singleExpression (expr (expr (primary o)) + (expr (primary 1))) <EOF>)", tree("o + 1"));
+        assertEquals("(singleExpression (expr (expr (primary `o`)) + (expr (primary 1))) <EOF>)", tree("`o`+1"));
+    }
+
+    @Test
     void compoundAssignments() {
         for (String op : new String[] {"=", "+=", "-=", "*=", "/=", "//=", "///=", "%%=", "%%%=", "^=",
-                ".+=", ".-=", ".*=", "./=", ".^="}) {
-            var result = VelFrontend.parseProgram("x " + op + " y");
+                ".+=", ".-=", ".*=", "./=", ".^=", "o+="}) {
+            var result = VelFrontend.parseProgram("x " + op + " y\nreturn x");
             assertFalse(result.hasErrors(), () -> op + " " + result.diagnostics());
         }
+    }
+
+    @Test
+    void singleExpressionProgramReturnsIt() {
+        assertFalse(VelFrontend.parseProgram("p + v * dt").hasErrors());
+        assertFalse(VelFrontend.parseProgram("return p + v * dt").hasErrors());
+    }
+
+    @Test
+    void otherProgramsMustEndWithReturn() {
+        var missing = VelFrontend.parseProgram("x = 1\ny = x + 1");
+        assertTrue(missing.hasErrors());
+        assertEquals(2, missing.diagnostics().getFirst().line());
+        // a lone assignment is not an expression
+        assertTrue(VelFrontend.parseProgram("x = 1").hasErrors());
+        assertTrue(VelFrontend.parseProgram("").hasErrors());
+        // return only as the last statement
+        var early = VelFrontend.parseProgram("return 1\nx = 2\nreturn x");
+        assertTrue(early.hasErrors());
+        assertTrue(early.diagnostics().getFirst().message().contains("last statement"));
     }
 
     private static String tree(String expression) {

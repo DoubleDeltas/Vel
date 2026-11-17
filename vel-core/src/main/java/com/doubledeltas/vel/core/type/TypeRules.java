@@ -1,6 +1,7 @@
 package com.doubledeltas.vel.core.type;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.doubledeltas.vel.core.type.Promotion.Arithmetic;
@@ -20,6 +21,7 @@ public final class TypeRules {
     public static ScalarType arithmetic(Arithmetic op, ScalarType a, ScalarType b) {
         Field field = Field.join(a.field(), b.field());
         if (field == Field.COMPLEX && isQuotientOrRemainder(op)) {
+            // to be defined together with the function syntax and user-defined infix operators
             throw new VelTypeException("operator " + op + " is not defined for Complex");
         }
         return new ScalarType(field, Promotion.arithmetic(op, a.resolution(), b.resolution()));
@@ -41,18 +43,24 @@ public final class TypeRules {
 
     /** Type of {@code a op b}. */
     public static ArrayType binary(BinaryOperator op, ArrayType a, ArrayType b) {
-        ScalarType element = arithmetic(op.arithmetic(), a.element(), b.element());
+        // a /< b divides b by a
+        ScalarType element = op == BinaryOperator.LEFT_DIV
+                ? arithmetic(Arithmetic.DIV, b.element(), a.element())
+                : arithmetic(op.arithmetic(), a.element(), b.element());
 
-        if (op.isElementWise() || bothScalar(a, b)) {
+        if (op.isElementWise() || (a.isScalar() && b.isScalar())) {
             return new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element);
         }
         return switch (op) {
             case MUL -> a.isScalar() || b.isScalar()
                     ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element) // scaling
                     : new ArrayType(Shapes.matmul(a, b), element);
-            case DIV -> b.isScalar()
+            case DIV, RIGHT_DIV -> b.isScalar()
                     ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element)
                     : new ArrayType(Shapes.rightDivide(a, b), element);
+            case LEFT_DIV -> a.isScalar()
+                    ? new ArrayType(Shapes.broadcast(a.dims(), b.dims()), element)
+                    : new ArrayType(Shapes.leftDivide(a, b), element);
             case POW -> {
                 if (!b.isScalar()) {
                     throw new VelTypeException("exponent of ^ must be a scalar, not " + b + " (use .^ for element-wise power)");
@@ -64,17 +72,16 @@ public final class TypeRules {
         };
     }
 
-    private static boolean bothScalar(ArrayType a, ArrayType b) {
-        return a.isScalar() && b.isScalar();
-    }
-
     /** Type of {@code -a} or {@code +a}. */
     public static ArrayType unary(ArrayType a, boolean minus) {
         ScalarType e = a.element();
         return a.withElement(new ScalarType(e.field(), Promotion.negate(e.resolution(), minus)));
     }
 
-    /** Type of {@code a'} (conjugate) or {@code a.'}: shape transposed, element unchanged. */
+    /**
+     * Type of {@code a'} (conjugate) or {@code a.'}: the element is unchanged and the order of the
+     * dimensions is reversed (a matrix is transposed; a tensor of rank 3 or more has its indices reversed).
+     */
     public static ArrayType transpose(ArrayType a) {
         return a.withDims(Shapes.transpose(a));
     }
@@ -109,37 +116,93 @@ public final class TypeRules {
         return matrix(items.stream().map(List::of).toList());
     }
 
+    // ------------------------------------------------------------------------------------------
+    // Ranges and indexing
+    // ------------------------------------------------------------------------------------------
+
     /**
-     * Type of a range {@code start:end} or {@code start:step:end}: a row vector. The length is known
-     * only when all bounds are integer literals; otherwise it is ⊤.
-     *
-     * @param step {@code null} for {@code start:end}
+     * Type of a range {@code start:end} (inclusive): a row vector of indices. Both bounds are cardinals
+     * (non-negative integer scalars; {@code end} for the last index). The length is known only when
+     * both bounds are integer literals; otherwise it is ⊤.
      */
-    public static ArrayType range(ArrayType start, ArrayType step, ArrayType end) {
-        List<ArrayType> parts = step == null ? List.of(start, end) : List.of(start, step, end);
-        ScalarType element = null;
-        for (ArrayType p : parts) {
-            if (!p.isScalar() || p.element().field() != Field.REAL) {
-                throw new VelTypeException("range bounds must be real scalars, not " + p);
-            }
-            element = element == null ? p.element() : join(element, p.element());
-        }
+    public static ArrayType range(ArrayType start, ArrayType end) {
+        requireCard(start, "range bound");
+        requireCard(end, "range bound");
+        ScalarType element = join(start.element(), end.element());
         element = new ScalarType(element.field(), Promotion.defaultOf(element.resolution()));
-        return ArrayType.mat(Card.ONE, rangeLength(start, step, end), element);
+        Card length = Card.TOP;
+        if (start.element().resolution() instanceof IntLiteral s && end.element().resolution() instanceof IntLiteral e) {
+            BigInteger n = e.value().subtract(s.value()).add(BigInteger.ONE);
+            length = Card.of(n.signum() > 0 ? n.longValueExact() : 0);
+        }
+        return ArrayType.mat(Card.ONE, length, element);
     }
 
-    private static Card rangeLength(ArrayType start, ArrayType step, ArrayType end) {
-        if (start.element().resolution() instanceof IntLiteral s
-                && end.element().resolution() instanceof IntLiteral e
-                && (step == null || step.element().resolution() instanceof IntLiteral)) {
-            BigInteger d = step == null ? BigInteger.ONE : ((IntLiteral) step.element().resolution()).value();
-            if (d.signum() == 0) {
-                throw new VelTypeException("range step must not be 0");
+    /** Type of {@code a[s₁, …, sₖ]}. */
+    public static ArrayType index(ArrayType a, List<Subscript> subscripts) {
+        return a.withDims(region(a, subscripts));
+    }
+
+    /**
+     * Type of the variable after {@code a[s₁, …, sₖ] = value} (copy and rewrite, type-system.md 1.5).
+     * The value must fit the selected region (or broadcast into it) and have a common type with the
+     * elements; when its resolution is larger, the whole array takes the larger resolution.
+     */
+    public static ArrayType indexAssign(ArrayType a, List<Subscript> subscripts, ArrayType value) {
+        List<Card> region = region(a, subscripts);
+        int rank = Math.max(region.size(), value.rank());
+        for (int i = 0; i < rank; i++) {
+            Card v = i < value.rank() ? value.dims().get(i) : Card.ONE;
+            Card r = i < region.size() ? region.get(i) : Card.ONE;
+            if (!v.isOne()) {
+                Shapes.unify(r, v, "cannot assign " + value + " to a region of size " + region + ":");
             }
-            BigInteger n = e.value().subtract(s.value()).divide(d).add(BigInteger.ONE);
-            boolean empty = e.value().subtract(s.value()).signum() * d.signum() < 0;
-            return Card.of(empty ? 0 : n.longValueExact());
         }
-        return Card.TOP;
+        return a.withElement(join(a.element(), value.element()));
+    }
+
+    /** Sizes of the region selected by the subscripts. */
+    private static List<Card> region(ArrayType a, List<Subscript> subscripts) {
+        if (subscripts.size() == a.rank()) {
+            List<Card> dims = new ArrayList<>(a.rank());
+            for (int i = 0; i < a.rank(); i++) {
+                dims.add(select(a.dims().get(i), subscripts.get(i)));
+            }
+            return dims;
+        }
+        if (subscripts.size() == 1 && a.isMatrix() && (a.rows().isOne() || a.cols().isOne())) {
+            // a vector takes a single subscript along its long dimension and keeps its orientation
+            boolean column = a.cols().isOne();
+            Card selected = select(column ? a.rows() : a.cols(), subscripts.getFirst());
+            return column ? List.of(selected, Card.ONE) : List.of(Card.ONE, selected);
+        }
+        throw new VelTypeException("expected " + a.rank() + " subscripts for " + a + ", got " + subscripts.size());
+    }
+
+    private static Card select(Card size, Subscript subscript) {
+        return switch (subscript) {
+            case Subscript.At at -> {
+                requireCard(at.index(), "index");
+                if (at.index().element().resolution() instanceof IntLiteral lit
+                        && size instanceof Card.Finite f && lit.value().compareTo(BigInteger.valueOf(f.size())) >= 0) {
+                    throw new VelTypeException("index " + lit.value() + " out of bounds for size " + f.size());
+                }
+                yield Card.ONE;
+            }
+            case Subscript.Span span -> span.range().cols();
+            case Subscript.All ignored -> size;
+        };
+    }
+
+    /** A cardinal: a non-negative integer scalar. */
+    private static void requireCard(ArrayType t, String what) {
+        Resolution r = t.element().resolution();
+        boolean integer = r.isInteger() || r instanceof IntLiteral;
+        if (!t.isScalar() || t.element().field() != Field.REAL || !integer) {
+            throw new VelTypeException(what + " must be a non-negative integer scalar, not " + t);
+        }
+        if (r instanceof IntLiteral lit && lit.value().signum() < 0) {
+            throw new VelTypeException(what + " must not be negative: " + lit.value());
+        }
     }
 }

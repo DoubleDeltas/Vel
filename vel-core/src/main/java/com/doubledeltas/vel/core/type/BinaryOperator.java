@@ -8,14 +8,20 @@ public enum BinaryOperator {
     SUB("-", Arithmetic.SUB, true),
     /** Matrix product; element-wise when an operand is a scalar. */
     MUL("*", Arithmetic.MUL, false),
-    /** Right division {@code A·B⁻¹}; true division for scalars. */
+    /** Right division {@code A·B⁻¹}; true division for scalars. Same as {@link #RIGHT_DIV}. */
     DIV("/", Arithmetic.DIV, false),
+    /** Right division {@code A·B⁻¹}, written {@code />}. */
+    RIGHT_DIV("/>", Arithmetic.DIV, false),
+    /** Left division {@code A⁻¹·B}, written {@code /<}. */
+    LEFT_DIV("/<", Arithmetic.DIV, false),
     /** Matrix power; ordinary power for scalars. */
     POW("^", Arithmetic.POW, false),
     FLOOR_DIV("//", Arithmetic.FLOOR_DIV, true),
     TRUNC_DIV("///", Arithmetic.TRUNC_DIV, true),
     FLOOR_MOD("%%", Arithmetic.FLOOR_MOD, true),
     TRUNC_MOD("%%%", Arithmetic.TRUNC_MOD, true),
+    /** Bool exclusive or (⊕). */
+    XOR("o+", Arithmetic.XOR, true),
     EW_ADD(".+", Arithmetic.ADD, true),
     EW_SUB(".-", Arithmetic.SUB, true),
     EW_MUL(".*", Arithmetic.MUL, true),
@@ -43,11 +49,6 @@ public enum BinaryOperator {
     /** Whether the operator always works element by element (and therefore broadcasts). */
     public boolean isElementWise() {
         return elementWise;
-    }
-
-    /** Quotient and remainder operators: defined only for real values. */
-    public boolean isQuotientOrRemainder() {
-        return this == FLOOR_DIV || this == TRUNC_DIV || this == FLOOR_MOD || this == TRUNC_MOD;
     }
 
     public static BinaryOperator fromSymbol(String symbol) {

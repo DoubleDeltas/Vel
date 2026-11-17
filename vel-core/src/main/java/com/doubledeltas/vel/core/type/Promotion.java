@@ -11,12 +11,16 @@ import com.doubledeltas.vel.core.type.Resolution.DecimalFloat;
 import com.doubledeltas.vel.core.type.Resolution.DecimalLiteral;
 import com.doubledeltas.vel.core.type.Resolution.FixedInt;
 import com.doubledeltas.vel.core.type.Resolution.IntLiteral;
+import com.doubledeltas.vel.core.type.Resolution.RationalLiteral;
 
 /** Resolution promotion rules (type-system.md 3). */
 public final class Promotion {
 
     /** Integer results of arithmetic are at least this wide (type-system.md 3.3, "최소 연산 폭"). */
     public static final int MIN_ARITHMETIC_WIDTH = 32;
+
+    /** Literal powers are folded exactly only up to this exponent, to keep constants small. */
+    static final int MAX_FOLDED_EXPONENT = 1024;
 
     private Promotion() {
     }
@@ -27,17 +31,25 @@ public final class Promotion {
 
     /**
      * {@code a ⊑ b}: every value of {@code a} is exactly representable in {@code b}, i.e. the
-     * implicit conversion from {@code a} to {@code b} is allowed. A literal is checked by its value.
+     * implicit conversion from {@code a} to {@code b} is allowed inside VEL. A literal is checked by
+     * its value.
      */
     public static boolean isRepresentable(Resolution a, Resolution b) {
         if (b.isLiteral()) {
             throw new IllegalArgumentException("target resolution must be concrete: " + b);
         }
-        if (a instanceof IntLiteral lit) {
-            return fits(lit.value(), b);
-        }
-        if (a instanceof DecimalLiteral lit) {
-            return fits(lit.value(), b);
+        switch (a) {
+            case IntLiteral lit -> {
+                return fits(lit.value(), b);
+            }
+            case DecimalLiteral lit -> {
+                return fits(lit.value(), b);
+            }
+            case RationalLiteral ignored -> {
+                return b instanceof BigDecimalRes; // D(∞) keeps fractions exactly
+            }
+            default -> {
+            }
         }
         if (a.equals(b)) {
             return true;
@@ -85,8 +97,8 @@ public final class Promotion {
     private static boolean fits(BigDecimal v, Resolution r) {
         return switch (r) {
             case BinaryFloat f -> switch (f.bits()) {
-                case 32 -> new BigDecimal(v.floatValue()).compareTo(v) == 0 && Float.isFinite(v.floatValue());
-                case 64 -> new BigDecimal(v.doubleValue()).compareTo(v) == 0 && Double.isFinite(v.doubleValue());
+                case 32 -> Float.isFinite(v.floatValue()) && new BigDecimal(v.floatValue()).compareTo(v) == 0;
+                case 64 -> Double.isFinite(v.doubleValue()) && new BigDecimal(v.doubleValue()).compareTo(v) == 0;
                 default -> v.stripTrailingZeros().unscaledValue().bitLength() <= f.precision();
             };
             case DecimalFloat f -> v.stripTrailingZeros().precision() <= f.digits();
@@ -108,7 +120,7 @@ public final class Promotion {
             }
             return v.bitLength() < 64 ? Resolution.INT64 : Resolution.BIG_INT;
         }
-        if (r instanceof DecimalLiteral) {
+        if (r instanceof DecimalLiteral || r instanceof RationalLiteral) {
             return Resolution.FLOAT64;
         }
         return r;
@@ -122,7 +134,7 @@ public final class Promotion {
         if (literal instanceof IntLiteral && isRepresentable(literal, partner)) {
             return partner;
         }
-        if (literal instanceof DecimalLiteral && partner.isFloating()) {
+        if (!(literal instanceof IntLiteral) && partner.isFloating()) {
             return partner;
         }
         return defaultOf(literal);
@@ -206,20 +218,34 @@ public final class Promotion {
 
     /** Element-level arithmetic, after mapping element-wise and matrix operators to these. */
     public enum Arithmetic {
-        ADD, SUB, MUL, DIV, FLOOR_DIV, TRUNC_DIV, FLOOR_MOD, TRUNC_MOD, POW
+        ADD, SUB, MUL, DIV, FLOOR_DIV, TRUNC_DIV, FLOOR_MOD, TRUNC_MOD, POW,
+        /** Bool exclusive or (⊕). */
+        XOR
     }
 
-    /** Result resolution of {@code a op b}. */
+    /**
+     * Result resolution of {@code a op b}. Arithmetic on literals alone is folded exactly and stays a
+     * literal, so intermediate constants keep the highest precision until they meet a concrete operand.
+     */
     public static Resolution arithmetic(Arithmetic op, Resolution a, Resolution b) {
-        if (op == Arithmetic.POW) {
-            return power(a, b);
-        }
         if (a instanceof Bool || b instanceof Bool) {
-            // Bool: + is OR, * is AND (type-system.md footnote 1)
-            if (op == Arithmetic.ADD || op == Arithmetic.MUL) {
+            // Bool: + is OR, * is AND, o+ is XOR (type-system.md footnote 1)
+            if (op == Arithmetic.ADD || op == Arithmetic.MUL || op == Arithmetic.XOR) {
                 return join(a, b);
             }
             throw new VelTypeException("operator " + op + " is not defined for Bool");
+        }
+        if (op == Arithmetic.XOR) {
+            throw new VelTypeException("operator o+ is defined only for Bool");
+        }
+        if (a.isLiteral() && b.isLiteral()) {
+            Resolution folded = Constants.fold(op, a, b);
+            if (folded != null) {
+                return folded;
+            }
+        }
+        if (op == Arithmetic.POW) {
+            return power(a, b);
         }
         Resolution[] c = concretize(a, b);
         Resolution x = c[0];
@@ -237,9 +263,6 @@ public final class Promotion {
     }
 
     private static Resolution power(Resolution base, Resolution exponent) {
-        if (base instanceof Bool || exponent instanceof Bool) {
-            throw new VelTypeException("operator ^ is not defined for Bool");
-        }
         Resolution b = base.isLiteral() && !exponent.isLiteral() ? adopt(base, exponent) : defaultOf(base);
         if (exponent instanceof IntLiteral lit && lit.value().signum() >= 0) {
             return widen(b); // repeated multiplication
@@ -257,6 +280,9 @@ public final class Promotion {
             case DecimalLiteral lit -> {
                 return minus ? new DecimalLiteral(lit.value().negate()) : lit;
             }
+            case RationalLiteral lit -> {
+                return minus ? new RationalLiteral(lit.numerator().negate(), lit.denominator()) : lit;
+            }
             case FixedInt f when minus && !f.signed() -> {
                 return widen(new FixedInt(f.bits() + 1, true));
             }
@@ -272,5 +298,110 @@ public final class Promotion {
             return new FixedInt(MIN_ARITHMETIC_WIDTH, f.signed());
         }
         return r;
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Exact folding of literal arithmetic
+    // ------------------------------------------------------------------------------------------
+
+    /** Exact rational arithmetic on literal constants. */
+    static final class Constants {
+
+        private Constants() {
+        }
+
+        /** Folds {@code a op b} for two literals, or returns null when it cannot be done exactly. */
+        static Resolution fold(Arithmetic op, Resolution a, Resolution b) {
+            boolean integers = a instanceof IntLiteral && b instanceof IntLiteral;
+            BigInteger[] x = rational(a);
+            BigInteger[] y = rational(b);
+            return switch (op) {
+                case ADD -> make(x[0].multiply(y[1]).add(y[0].multiply(x[1])), x[1].multiply(y[1]), integers);
+                case SUB -> make(x[0].multiply(y[1]).subtract(y[0].multiply(x[1])), x[1].multiply(y[1]), integers);
+                case MUL -> make(x[0].multiply(y[0]), x[1].multiply(y[1]), integers);
+                case DIV -> y[0].signum() == 0 ? null
+                        : make(x[0].multiply(y[1]), x[1].multiply(y[0]), false); // true division
+                case FLOOR_DIV, TRUNC_DIV, FLOOR_MOD, TRUNC_MOD -> integers && y[0].signum() != 0
+                        ? new IntLiteral(integerOp(op, x[0], y[0]))
+                        : null;
+                case POW -> power(x, b, a instanceof IntLiteral);
+                case XOR -> null;
+            };
+        }
+
+        private static BigInteger integerOp(Arithmetic op, BigInteger a, BigInteger b) {
+            BigInteger[] qr = a.divideAndRemainder(b); // truncating
+            boolean adjust = qr[1].signum() != 0 && qr[1].signum() != b.signum();
+            return switch (op) {
+                case TRUNC_DIV -> qr[0];
+                case TRUNC_MOD -> qr[1];
+                case FLOOR_DIV -> adjust ? qr[0].subtract(BigInteger.ONE) : qr[0];
+                case FLOOR_MOD -> adjust ? qr[1].add(b) : qr[1];
+                default -> throw new IllegalArgumentException(op.toString());
+            };
+        }
+
+        private static Resolution power(BigInteger[] base, Resolution exponent, boolean integerBase) {
+            if (!(exponent instanceof IntLiteral e) || e.value().abs().compareTo(BigInteger.valueOf(MAX_FOLDED_EXPONENT)) > 0) {
+                return null;
+            }
+            int n = e.value().intValueExact();
+            if (n >= 0) {
+                return make(base[0].pow(n), base[1].pow(n), integerBase);
+            }
+            if (base[0].signum() == 0) {
+                return null;
+            }
+            return make(base[1].pow(-n), base[0].pow(-n), false);
+        }
+
+        /** {@code {numerator, denominator}} of a literal, denominator > 0. */
+        private static BigInteger[] rational(Resolution r) {
+            return switch (r) {
+                case IntLiteral i -> new BigInteger[] {i.value(), BigInteger.ONE};
+                case DecimalLiteral d -> d.value().scale() <= 0
+                        ? new BigInteger[] {d.value().toBigIntegerExact(), BigInteger.ONE}
+                        : new BigInteger[] {d.value().unscaledValue(), BigInteger.TEN.pow(d.value().scale())};
+                case RationalLiteral q -> new BigInteger[] {q.numerator(), q.denominator()};
+                default -> throw new IllegalArgumentException("not a literal: " + r);
+            };
+        }
+
+        /**
+         * A literal for {@code num/den}: an integer literal if both inputs were integers and the
+         * operation keeps integers, otherwise a decimal literal when finite and a fraction when not.
+         */
+        private static Resolution make(BigInteger num, BigInteger den, boolean integers) {
+            if (den.signum() < 0) {
+                num = num.negate();
+                den = den.negate();
+            }
+            BigInteger g = num.gcd(den);
+            if (g.signum() != 0 && !g.equals(BigInteger.ONE)) {
+                num = num.divide(g);
+                den = den.divide(g);
+            }
+            if (integers && den.equals(BigInteger.ONE)) {
+                return new IntLiteral(num);
+            }
+            BigInteger rest = den;
+            int twos = 0;
+            int fives = 0;
+            while (!rest.testBit(0) && rest.signum() != 0) {
+                rest = rest.shiftRight(1);
+                twos++;
+            }
+            BigInteger five = BigInteger.valueOf(5);
+            while (rest.mod(five).signum() == 0) {
+                rest = rest.divide(five);
+                fives++;
+            }
+            if (!rest.equals(BigInteger.ONE)) {
+                return new RationalLiteral(num, den);
+            }
+            int scale = Math.max(twos, fives);
+            BigInteger unscaled = num.multiply(BigInteger.TEN.pow(scale)).divide(den);
+            return new DecimalLiteral(new BigDecimal(unscaled, scale));
+        }
     }
 }

@@ -59,13 +59,15 @@ $\langle\mathrm{Real}\rangle_D(\infty)$의 정밀도 처리와 $\langle\mathrm{R
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
 ### 2.1. 크기
-각 차원의 크기는 기본적으로 $\top$이며, `@Dim`으로 지정한다(Java 매핑 2.1절). `java`는 JVM 선언 순서(바깥 배열부터), `vel`은 VEL 순서(행 먼저)이며 둘 중 정확히 하나를 쓴다.
+각 차원의 크기는 기본적으로 $\top$이며, `@Dim`으로 지정한다(Java 매핑 2.1절). `value`와 `vel`은 VEL 순서(행 먼저), `java`는 JVM 선언 순서(바깥 배열부터)이며 셋 중 정확히 하나를 쓴다.
 
-Kotlin에서는 어노테이션의 배열 인자를 `[...]`로 쓴다.
+Kotlin에서는 `value` 인자를 가변 인자처럼 `@Dim(3, 4)`로, 이름 있는 배열 인자를 `[...]`로 쓴다.
 
 | Kotlin 선언 | VEL 타입 |
 | --- | --- |
 | `v: DoubleArray` | $\mathrm{Vec}(\top, F)$ |
+| `@Dim(3) v: DoubleArray` | $\mathrm{Vec}(3, F)$ |
+| `@Dim(3, 4) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ |
 | `@Dim(java = [3]) v: DoubleArray` | $\mathrm{Vec}(3, F)$ |
 | `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ |
 | `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\mathrm{Mat}(3, 4, F)$ (위와 같음) |
@@ -124,5 +126,15 @@ Kotlin 코드를 VEL로 옮길 때 나눗셈 계열은 다음과 같이 대응�
 | `a.mod(b)` | `a %% b` | $-\infty$ 방향 |
 
 VEL의 `/`는 정수끼리도 참 나눗셈이므로, Kotlin의 정수 `a / b`를 그대로 옮기면 결과가 달라진다.
+
+Boolean 연산은 다음과 같이 대응한다.
+
+| Kotlin | VEL |
+| --- | --- |
+| `a or b` | `a + b` |
+| `a and b` | `a * b` |
+| `a xor b` | `a o+ b` |
+
+`j`, `end`는 미리 선언된 변수이며 대입하면 새 값에 다시 묶인다(Java 매핑 4절). VEL 밖으로 나가는 값의 변환은 Java 매핑 5절과 같다.
 
 [^1]: `Char`는 Kotlin에서 수가 아니므로, `Char.code`의 값(UTF-16 코드 유닛)을 취급한다.

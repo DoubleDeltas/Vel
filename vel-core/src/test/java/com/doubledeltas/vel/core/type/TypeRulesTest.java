@@ -5,8 +5,11 @@ import static com.doubledeltas.vel.core.type.BinaryOperator.DIV;
 import static com.doubledeltas.vel.core.type.BinaryOperator.EW_MUL;
 import static com.doubledeltas.vel.core.type.BinaryOperator.EW_POW;
 import static com.doubledeltas.vel.core.type.BinaryOperator.FLOOR_MOD;
+import static com.doubledeltas.vel.core.type.BinaryOperator.LEFT_DIV;
 import static com.doubledeltas.vel.core.type.BinaryOperator.MUL;
 import static com.doubledeltas.vel.core.type.BinaryOperator.POW;
+import static com.doubledeltas.vel.core.type.BinaryOperator.RIGHT_DIV;
+import static com.doubledeltas.vel.core.type.BinaryOperator.XOR;
 import static com.doubledeltas.vel.core.type.Card.TOP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -122,7 +125,34 @@ class TypeRulesTest {
     void transpose() {
         assertEquals(mat(n(1), n(3)), TypeRules.transpose(ArrayType.vec(n(3), F64)));
         assertEquals(mat(TOP, n(2)), TypeRules.transpose(mat(n(2), TOP)));
-        assertThrows(VelTypeException.class, () -> TypeRules.transpose(ArrayType.of(F64, n(2), n(3), n(4))));
+        // rank 3 or more: the order of the indices is reversed
+        assertEquals(ArrayType.of(F64, n(4), n(3), n(2)), TypeRules.transpose(ArrayType.of(F64, n(2), n(3), n(4))));
+    }
+
+    @Test
+    void leftAndRightDivision() {
+        ArrayType a = mat(n(3), n(3));
+        ArrayType b = mat(n(3), n(2));
+        // A /< B = A⁻¹ B : Mat(3, 2)
+        assertEquals(mat(n(3), n(2)), TypeRules.binary(LEFT_DIV, a, b));
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(LEFT_DIV, b, a));          // A not square
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(LEFT_DIV, a, mat(n(2), n(2)))); // rows differ
+        // B' /> A = B' A⁻¹, same as /
+        ArrayType bt = TypeRules.transpose(b);
+        assertEquals(mat(n(2), n(3)), TypeRules.binary(RIGHT_DIV, bt, a));
+        assertEquals(TypeRules.binary(DIV, bt, a), TypeRules.binary(RIGHT_DIV, bt, a));
+        // scalar /< B divides every element of B
+        assertEquals(b, TypeRules.binary(LEFT_DIV, lit(2), b));
+        // literal operands: 2 /< 6 = 6 / 2 = 3
+        assertEquals(ScalarType.real(Resolution.literal(new BigDecimal("3"))),
+                TypeRules.binary(LEFT_DIV, lit(2), lit(6)).element());
+    }
+
+    @Test
+    void boolXorIsElementWise() {
+        ArrayType bools = ArrayType.vec(n(3), ScalarType.BOOL);
+        assertEquals(bools, TypeRules.binary(XOR, bools, ArrayType.scalar(ScalarType.BOOL)));
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(XOR, mat(n(2), n(2)), mat(n(2), n(2))));
     }
 
     @Test
@@ -169,16 +199,76 @@ class TypeRulesTest {
     }
 
     @Test
-    void ranges() {
-        assertEquals(ArrayType.mat(n(1), n(5), I32), TypeRules.range(lit(0), null, lit(4)));
-        assertEquals(ArrayType.mat(n(1), n(3), I32), TypeRules.range(lit(0), lit(2), lit(5)));    // 0, 2, 4
-        assertEquals(ArrayType.mat(n(1), n(3), I32), TypeRules.range(lit(4), lit(-2), lit(0)));   // 4, 2, 0
-        assertEquals(ArrayType.mat(n(1), n(0), I32), TypeRules.range(lit(3), null, lit(1)));      // empty
+    void rangesHaveCardinalBounds() {
+        assertEquals(ArrayType.mat(n(1), n(5), I32), TypeRules.range(lit(0), lit(4)));
+        assertEquals(ArrayType.mat(n(1), n(0), I32), TypeRules.range(lit(3), lit(1)));      // empty
+        // a non-literal bound (a variable, or end) gives length ⊤
+        assertEquals(ArrayType.mat(n(1), TOP, I32), TypeRules.range(lit(0), ArrayType.scalar(I32)));
+        // bounds must be non-negative integer scalars
         ArrayType tenth = ArrayType.scalar(ScalarType.literal(new BigDecimal("0.1")));
-        assertEquals(ArrayType.mat(n(1), TOP, F64), TypeRules.range(lit(0), tenth, lit(1)));
-        assertEquals(ArrayType.mat(n(1), TOP, I32), TypeRules.range(lit(0), null, ArrayType.scalar(I32)));
-        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), lit(0), lit(1)));
-        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), null, ArrayType.vec(n(2), F64)));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), tenth));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(-1), lit(3)));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), ArrayType.scalar(F64)));
+        assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), ArrayType.vec(n(2), I32)));
+    }
+
+    // ---- indexing ---------------------------------------------------------------------------------
+
+    @Test
+    void indexing() {
+        ArrayType m = mat(n(3), n(4));
+        Subscript row1 = Subscript.at(lit(1));
+        Subscript cols = Subscript.span(TypeRules.range(lit(0), lit(1)));
+        // m[i, j] is a scalar, m[1, :] a row, m[:, 0:1] a 3x2 block
+        assertTrue(TypeRules.index(m, List.of(row1, Subscript.at(lit(2)))).isScalar());
+        assertEquals(mat(n(1), n(4)), TypeRules.index(m, List.of(row1, Subscript.all())));
+        assertEquals(mat(n(3), n(2)), TypeRules.index(m, List.of(Subscript.all(), cols)));
+        // a vector takes one subscript and keeps its orientation
+        ArrayType v = ArrayType.vec(n(5), F64);
+        assertTrue(TypeRules.index(v, List.of(Subscript.at(lit(4)))).isScalar());
+        assertEquals(ArrayType.vec(n(2), F64), TypeRules.index(v, List.of(cols)));
+        assertEquals(mat(n(1), n(2)), TypeRules.index(TypeRules.transpose(v), List.of(cols)));
+        // a range up to end has length ⊤
+        Subscript toEnd = Subscript.span(TypeRules.range(lit(1), ArrayType.scalar(I32)));
+        assertEquals(ArrayType.vec(TOP, F64), TypeRules.index(v, List.of(toEnd)));
+        // errors: subscript count, index type, known out of bounds
+        assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(row1)));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(ArrayType.scalar(F64)))));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(5)))));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(-1)))));
+    }
+
+    @Test
+    void indexAssignmentWidensTheVariable() {
+        ArrayType ints = ArrayType.mat(n(2), n(3), I32);
+        Subscript first = Subscript.at(lit(0));
+        // m[0, 0] = 5 keeps Z(32); m[0, 0] = 0.5 widens the whole array to F(64)
+        assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, first), lit(5)));
+        ArrayType half = ArrayType.scalar(ScalarType.literal(new BigDecimal("0.5")));
+        assertEquals(ArrayType.mat(n(2), n(3), F64), TypeRules.indexAssign(ints, List.of(first, first), half));
+        // a row region takes a matching row or a broadcast scalar
+        assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayType.mat(n(1), n(3), I32)));
+        assertEquals(ints, TypeRules.indexAssign(ints, List.of(first, Subscript.all()), lit(0)));
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.indexAssign(ints, List.of(first, Subscript.all()), ArrayType.mat(n(1), n(2), I32)));
+        // the value must have a common type with the elements
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.indexAssign(ints, List.of(first, first), ArrayType.scalar(ScalarType.BOOL)));
+    }
+
+    // ---- @Dim -------------------------------------------------------------------------------------
+
+    @Test
+    void dimAnnotation() {
+        int[] none = {};
+        assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(new int[] {3, 4}, none, none));   // value = vel
+        assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(none, none, new int[] {3, 4}));
+        assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(none, new int[] {4, 3}, none));   // java reversed
+        assertEquals(List.of(n(3), TOP), DimSpec.fromAnnotation(none, new int[] {-1, 3}, none));
+        assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(none, new int[] {4, 3}, new int[] {3, 4}));
+        assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(new int[] {3}, none, new int[] {3}));
+        assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(none, none, none));
+        assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(new int[] {-2}, none, none));
     }
 
     // ---- assignability ----------------------------------------------------------------------------

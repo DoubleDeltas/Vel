@@ -11,6 +11,16 @@ public record ParseResult<T extends ParserRuleContext>(T tree, List<VelDiagnosti
         diagnostics = List.copyOf(diagnostics);
     }
 
+    /** The same tree with additional diagnostics. */
+    public ParseResult<T> with(List<VelDiagnostic> more) {
+        if (more.isEmpty()) {
+            return this;
+        }
+        List<VelDiagnostic> all = new java.util.ArrayList<>(diagnostics);
+        all.addAll(more);
+        return new ParseResult<>(tree, all);
+    }
+
     public boolean hasErrors() {
         return diagnostics.stream().anyMatch(d -> d.severity() == VelDiagnostic.Severity.ERROR);
     }

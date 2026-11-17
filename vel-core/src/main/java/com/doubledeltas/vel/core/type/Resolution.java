@@ -144,14 +144,33 @@ public sealed interface Resolution {
 
     /** A decimal literal whose resolution is not yet determined. */
     record DecimalLiteral(BigDecimal value) implements Resolution {
+        /** Kept without trailing zeros so that equal values are equal literals ({@code 1.0 == 1}). */
+        public DecimalLiteral {
+            value = value.stripTrailingZeros();
+        }
+
         @Override
         public String toString() {
             return "lit(" + value.toPlainString() + ")";
         }
     }
 
+    /**
+     * An exact constant that is not a finite decimal, such as {@code 1/3}, produced by folding
+     * literal arithmetic. Behaves like a decimal literal; only D(∞) (kept as a fraction) holds it exactly.
+     *
+     * @param numerator   any integer
+     * @param denominator greater than 1, coprime with the numerator, with a prime factor other than 2 and 5
+     */
+    record RationalLiteral(BigInteger numerator, BigInteger denominator) implements Resolution {
+        @Override
+        public String toString() {
+            return "lit(" + numerator + "/" + denominator + ")";
+        }
+    }
+
     default boolean isLiteral() {
-        return this instanceof IntLiteral || this instanceof DecimalLiteral;
+        return this instanceof IntLiteral || this instanceof DecimalLiteral || this instanceof RationalLiteral;
     }
 
     /** Z(n), Z+(n) or Z(∞) (literals excluded). */
