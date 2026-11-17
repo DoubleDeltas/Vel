@@ -275,6 +275,47 @@ class VelFrontendTest {
         assertTrue(early.diagnostics().getFirst().message().contains("last statement"));
     }
 
+    @Test
+    void destructuringAssignment() {
+        var tuple = VelFrontend.parseProgram("(x, y, z) = (1, 2, 3)\nreturn x");
+        assertFalse(tuple.hasErrors(), () -> tuple.diagnostics().toString());
+        assertEquals("(statement (pattern ( (patternItem (target x)) , (patternItem (target y)) , (patternItem (target z)) )) = (expr (primary ( (expr (primary 1)) , (expr (primary 2)) , (expr (primary 3)) ))))",
+                tuple.tree().statement().getFirst().toStringTree(new com.doubledeltas.vel.parser.VelParser(null)));
+
+        var matrix = VelFrontend.parseProgram("[a, b; c, d] = eye(2, 2)\nreturn a");
+        assertFalse(matrix.hasErrors(), () -> matrix.diagnostics().toString());
+        assertEquals("(statement (pattern [ (patternRow (patternItem (target a)) , (patternItem (target b))) ; (patternRow (patternItem (target c)) , (patternItem (target d))) ]) = (expr (primary eye ( (arguments (expr (primary 2)) , (expr (primary 2))) ))))",
+                matrix.tree().statement().getFirst().toStringTree(new com.doubledeltas.vel.parser.VelParser(null)));
+
+        // targets may be indexed or quoted
+        assertFalse(VelFrontend.parseProgram("(m[0], `j`) = v\nreturn m").hasErrors());
+        // a tuple literal on its own is still an expression
+        assertFalse(VelFrontend.parseProgram("(x, y)").hasErrors());
+    }
+
+    @Test
+    void questionMarkDiscardsAnElement() {
+        var tuple = VelFrontend.parseProgram("(x, ?, z) = v\nreturn x");
+        assertFalse(tuple.hasErrors(), () -> tuple.diagnostics().toString());
+        assertEquals("(statement (pattern ( (patternItem (target x)) , (patternItem ?) , (patternItem (target z)) )) = (expr (primary v)))",
+                tuple.tree().statement().getFirst().toStringTree(new com.doubledeltas.vel.parser.VelParser(null)));
+        // several placeholders are fine, in any pattern
+        assertFalse(VelFrontend.parseProgram("[a, ?; ?, d] = m\nreturn a").hasErrors());
+        assertFalse(VelFrontend.parseProgram("(?, ?, z) = v\nreturn z").hasErrors());
+        // '?' is only a pattern item: not an expression or an assignment target
+        assertTrue(VelFrontend.parseExpression("? + 1").hasErrors());
+        assertTrue(VelFrontend.parseProgram("? = 1\nreturn 0").hasErrors());
+    }
+
+    @Test
+    void invalidDestructuringPatterns() {
+        // rows of different lengths, repeated targets, expressions as targets, compound operators
+        assertTrue(VelFrontend.parseProgram("[a, b; c] = m\nreturn a").hasErrors());
+        assertTrue(VelFrontend.parseProgram("(x, x) = v\nreturn x").hasErrors());
+        assertTrue(VelFrontend.parseProgram("(x + 1, y) = v\nreturn x").hasErrors());
+        assertTrue(VelFrontend.parseProgram("(x, y) += v\nreturn x").hasErrors());
+    }
+
     private static String tree(String expression) {
         var result = VelFrontend.parseExpression(expression);
         assertFalse(result.hasErrors(), () -> result.diagnostics().toString());

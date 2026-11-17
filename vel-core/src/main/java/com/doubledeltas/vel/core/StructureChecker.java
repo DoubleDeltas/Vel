@@ -50,6 +50,34 @@ final class StructureChecker extends VelBaseVisitor<Void> {
     }
 
     @Override
+    public Void visitMatrixPattern(VelParser.MatrixPatternContext ctx) {
+        int width = ctx.patternRow().getFirst().patternItem().size();
+        for (VelParser.PatternRowContext row : ctx.patternRow()) {
+            if (row.patternItem().size() != width) {
+                error(row.getStart(), "every row of a matrix pattern must have " + width + " items");
+            }
+        }
+        checkDistinct(ctx.patternRow().stream().flatMap(r -> r.patternItem().stream()).toList());
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Void visitTuplePattern(VelParser.TuplePatternContext ctx) {
+        checkDistinct(ctx.patternItem());
+        return visitChildren(ctx);
+    }
+
+    /** A target may appear only once in a pattern; any number of '?' placeholders are allowed. */
+    private void checkDistinct(List<VelParser.PatternItemContext> items) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (VelParser.PatternItemContext item : items) {
+            if (item instanceof VelParser.BindItemContext bind && !seen.add(bind.target().getText())) {
+                error(bind.getStart(), "'" + bind.target().getText() + "' appears more than once in the pattern");
+            }
+        }
+    }
+
+    @Override
     public Void visitRangeExpr(VelParser.RangeExprContext ctx) {
         for (VelParser.ExprContext bound : ctx.expr()) {
             if (bound instanceof VelParser.RangeExprContext) {

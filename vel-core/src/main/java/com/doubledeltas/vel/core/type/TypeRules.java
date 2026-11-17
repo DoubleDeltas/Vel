@@ -161,6 +161,21 @@ public final class TypeRules {
         return a.withElement(join(a.element(), value.element()));
     }
 
+    /**
+     * Destructuring assignment {@code [t₁₁, …; …] = value} with a pattern of {@code rows × cols}
+     * targets (a tuple pattern of k targets is k × 1). The value must have that shape (⊤ follows
+     * type-system.md 1.2); each target receives one element, so the result is the type of every target.
+     */
+    public static ArrayType destructure(ArrayType value, int rows, int cols) {
+        if (!value.isMatrix()) {
+            throw new VelTypeException("cannot destructure " + value + " into a " + rows + "x" + cols + " pattern");
+        }
+        String what = "cannot destructure " + value + " into a " + rows + "x" + cols + " pattern:";
+        Shapes.unify(value.rows(), Card.of(rows), what);
+        Shapes.unify(value.cols(), Card.of(cols), what);
+        return ArrayType.scalar(value.element());
+    }
+
     /** Sizes of the region selected by the subscripts. */
     private static List<Card> region(ArrayType a, List<Subscript> subscripts) {
         if (subscripts.size() == a.rank()) {

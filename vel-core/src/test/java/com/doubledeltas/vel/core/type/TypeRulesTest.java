@@ -256,6 +256,20 @@ class TypeRulesTest {
                 () -> TypeRules.indexAssign(ints, List.of(first, first), ArrayType.scalar(ScalarType.BOOL)));
     }
 
+    @Test
+    void destructuring() {
+        // (x, y, z) = (1, 2, 3): each target is a Z(32) scalar
+        ArrayType value = TypeRules.tuple(List.of(lit(1), lit(2), lit(3)));
+        assertEquals(ArrayType.scalar(I32), TypeRules.destructure(value, 3, 1));
+        // [a, b; c, d] = M with M: Mat(2, 2, F(64))
+        assertEquals(ArrayType.scalar(F64), TypeRules.destructure(mat(n(2), n(2)), 2, 2));
+        // ⊤ sizes are accepted (checked at runtime as usual), known mismatches are errors
+        assertEquals(ArrayType.scalar(F64), TypeRules.destructure(ArrayType.vec(TOP, F64), 3, 1));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.vec(n(2), F64), 3, 1));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructure(mat(n(2), n(2)), 4, 1));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.of(F64, n(2), n(2), n(2)), 2, 2));
+    }
+
     // ---- @Dim -------------------------------------------------------------------------------------
 
     @Test

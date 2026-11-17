@@ -60,6 +60,7 @@ sep
 
 statement
     : 'return' expr                                         # returnStmt
+    | pattern '=' expr                                      # destructuringStmt
     | target op=( '='
                 | '+=' | '-=' | '*=' | '/=' | '//=' | '///=' | '%%=' | '%%%=' | '^='
                 | '.+=' | '.-=' | '.*=' | './=' | '.^=' | 'o+=' ) expr  # assignStmt
@@ -73,6 +74,25 @@ statement
  */
 target
     : (ID | QUOTED_ID) ('[' indexList ']')?
+    ;
+
+/**
+ * Destructuring pattern, shaped like the tuple and matrix literals: each target receives one element.
+ * `(x, y, z) = v` takes a 3x1 value, `[a, b; c, d] = m` a 2x2 value.
+ * `?` discards the element at its position (it still counts for the shape).
+ */
+pattern
+    : '(' patternItem (',' patternItem)+ ')'                # tuplePattern
+    | '[' patternRow (';' patternRow)* ']'                  # matrixPattern
+    ;
+
+patternRow
+    : patternItem (',' patternItem)*
+    ;
+
+patternItem
+    : target                                                # bindItem
+    | '?'                                                   # discardItem
     ;
 
 // Alternatives are listed from highest to lowest precedence.
@@ -167,6 +187,7 @@ LBRACK : '[' { nesting++; } ;
 RBRACK : ']' { if (nesting > 0) nesting--; } ;
 
 COMMA    : ',' ;
+QUESTION : '?' ;
 SEMI     : ';' ;
 COLON    : ':' ;
 TICK     : '\'' ;
