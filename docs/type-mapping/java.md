@@ -7,33 +7,33 @@ Java 타입 시스템 및 SDK에서 정의된 라이브러리와의 기본 매�
 ### 1.1. 원시 타입 (Primitive Types)
 | Java 타입 | VEL 타입 |
 | --- | --- |
-| `byte` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}8}$ |
-| `short` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}16}$ |
-| `int` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$ |
-| `long` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}64}$ |
+| `byte` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}8}$ |
+| `short` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}16}$ |
+| `int` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$ |
+| `long` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}64}$ |
 | `float` | $\langle\mathrm{Real}\rangle_{\mathrm{F}32}$ |
 | `double` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ |
 | `boolean` | $\langle\mathrm{Bool}\rangle$ |
-| `char` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}16}$[^1] |
+| `char` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}16}$[^1] |
 
 ### 1.2. Wrapper Types
 | Java 타입 | VEL 타입 |
 | --- | --- |
-| `java.lang.Byte` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}8}$ |
-| `java.lang.Short` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}16}$ |
-| `java.lang.Integer` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$ |
-| `java.lang.Long` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}64}$ |
+| `java.lang.Byte` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}8}$ |
+| `java.lang.Short` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}16}$ |
+| `java.lang.Integer` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$ |
+| `java.lang.Long` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}64}$ |
 | `java.lang.Float` | $\langle\mathrm{Real}\rangle_{\mathrm{F}32}$ |
 | `java.lang.Double` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ |
 | `java.lang.Boolean` | $\langle\mathrm{Bool}\rangle$ |
-| `java.lang.Character` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}16}$[^1] |
+| `java.lang.Character` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}16}$[^1] |
 
 래퍼 타입의 값이 `null`이면 `NullPointerException`을 던진다.
 
 ### 1.3. 임의 정밀도
 | Java 타입 | VEL 타입 |
 | --- | --- |
-| `java.math.BigInteger` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}\infty}$ |
+| `java.math.BigInteger` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}\infty}$ |
 | `java.math.BigDecimal` | $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$ |
 
 $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$의 정밀도 처리(VEL 타입 시스템 3.3절 "$\mathrm{D}\infty$의 정밀도")는 다음과 같이 구체화한다.
@@ -59,7 +59,7 @@ JDK에는 $\langle\mathrm{Real}\rangle_{\mathrm{D}n}$에 대응하는 타입이 
 - Java 배열(`int[]`)
 - `java.util.List`(`List<Integer>`)
 
-원소가 스칼라 타입 $\langle \mathbb K \rangle_R$(스칼라 체 $\mathbb K$, 해상도 $R$)인 시퀀스에 대해
+원소가 스칼라 타입 $\langle \mathbb K \rangle_R$(스칼라 대수 $\mathbb K$, 해상도 $R$)인 시퀀스에 대해
 - 길이 $n$인 1차원 시퀀스 `a[n]`은 $\langle\mathrm{Vec}(n, \mathbb K)\rangle_R$로 취급한다.
 - 2차원 시퀀스 `a[m][n]`은 $\langle\mathrm{Mat}(n, m, \mathbb K)\rangle_R$로 취급한다.
 
@@ -111,12 +111,12 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). 따라서 Java에서 넘�
 - 메서드 `component1()`, …, `componentN()`이 있는 클래스(예: Kotlin의 `Pair`, `Triple`, data class): 각 메서드의 반환 타입
 
 각 성분 타입이 VEL 타입 $C_i \mapsto \langle\mathrm{Array}(\mathbf d_i, \mathbb K_i)\rangle_{R_i}$로 변환되고, 다음을 만족하면 $T$는 배열 타입이다.
-- 모든 성분 체의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ ($\top$은 VEL 타입 시스템 1.2절을 따른다)
-- 모든 성분의 스칼라 체가 같다: $\mathbb K_1 = \cdots = \mathbb K_N = \mathbb K$
+- 모든 성분 대수의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ ($\top$은 VEL 타입 시스템 1.2절을 따른다)
+- 모든 성분의 스칼라 대수에 상한이 있다: $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$ (VEL 타입 시스템 3.1절)
 
 $$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
 
-즉 성분의 모양 앞에 크기 $N$인 차원을 붙인다. 성분 $i$는 첫 인덱스가 $i$인 부분 $T[i, \cdots]$다. 해상도가 서로 다르면 넓은 쪽($\sqcup$)을 따른다. 위 조건을 만족하지 않는 객체는 배열이 아니다.
+즉 성분의 모양 앞에 크기 $N$인 차원을 붙인다. 성분 $i$는 첫 인덱스가 $i$인 부분 $T[i, \cdots]$다. 스칼라 대수가 서로 다르면 상한($\vee$)을, 해상도가 서로 다르면 넓은 쪽($\sqcup$)을 따른다. 예를 들어 $\mathrm{Int}$와 $\mathrm{Real}$ 성분이 섞이면 $\mathrm{Real}$이 되고, 해상도도 실수 해상도가 된다. 위 조건을 만족하지 않는 객체는 배열이 아니다.
 - 성분이 스칼라면 $\mathrm{Array}(N) = \mathrm{Vec}(N)$이다.
 - 성분이 길이 $M$인 벡터면 $\mathrm{Array}(N, M, 1) = \mathrm{Mat}(N, M)$이다. 성분 $i$는 $i$번째 행이다.
 - 성분이 행렬이면 3차원 배열이 된다.
@@ -124,10 +124,10 @@ $$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \
 | $T$ | 성분 | VEL 타입 |
 | --- | --- | --- |
 | `record P(double x, double y)` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `record Q(int a, double b)` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
+| `record Q(int a, double b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
 | `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$, $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Mat}(2, 3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
 | `record S(double[] u, double[] v)` | $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$, $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `record B(int a, boolean b)` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Bool}\rangle$ | 배열이 아님 (스칼라 체가 다름) |
+| `record B(int a, boolean b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Bool}\rangle$ | 배열이 아님 (스칼라 대수의 상한이 없음) |
 
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
 정적 메소드와 함수형 인터페이스의 유일한 함수의 모든 인자 타입과 반환 타입이 VEL로 변환 가능하다면 VEL의 함수 타입으로 취급한다.

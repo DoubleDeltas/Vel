@@ -19,12 +19,12 @@ public final class TypeRules {
 
     /** Element type of {@code a op b}. */
     public static ScalarType arithmetic(Arithmetic op, ScalarType a, ScalarType b) {
-        Field field = Field.join(a.field(), b.field());
-        if (field == Field.COMPLEX && isQuotientOrRemainder(op)) {
+        Algebra algebra = Algebra.join(a.algebra(), b.algebra());
+        if (algebra == Algebra.COMPLEX && isQuotientOrRemainder(op)) {
             // to be defined together with the function syntax and user-defined infix operators
             throw new VelTypeException("operator " + op + " is not defined for Complex");
         }
-        return new ScalarType(field, Promotion.arithmetic(op, a.resolution(), b.resolution()));
+        return ScalarType.of(algebra, Promotion.arithmetic(op, a.resolution(), b.resolution()));
     }
 
     private static boolean isQuotientOrRemainder(Arithmetic op) {
@@ -32,9 +32,9 @@ public final class TypeRules {
                 || op == Arithmetic.FLOOR_MOD || op == Arithmetic.TRUNC_MOD;
     }
 
-    /** Element type of a concatenation or a common type: field ∨ and resolution ⊔ (no minimum width). */
+    /** Element type of a concatenation or a common type: algebra ∨ and resolution ⊔ (no minimum width). */
     public static ScalarType join(ScalarType a, ScalarType b) {
-        return new ScalarType(Field.join(a.field(), b.field()), Promotion.join(a.resolution(), b.resolution()));
+        return ScalarType.of(Algebra.join(a.algebra(), b.algebra()), Promotion.join(a.resolution(), b.resolution()));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -75,10 +75,10 @@ public final class TypeRules {
     /**
      * Type of {@code if c then a else b}. The condition is a Bool scalar; only the chosen branch is
      * evaluated. The result has the common type of the branches: the same shape (⊤ follows
-     * type-system.md 1.2), field ∨ and resolution ⊔ of the elements.
+     * type-system.md 1.2), algebra ∨ and resolution ⊔ of the elements.
      */
     public static ArrayType conditional(ArrayType condition, ArrayType then, ArrayType otherwise) {
-        if (!condition.isScalar() || condition.element().field() != Field.BOOL) {
+        if (!condition.isScalar() || condition.element().algebra() != Algebra.BOOL) {
             throw new VelTypeException("condition of if must be a Bool scalar, not " + condition);
         }
         int rank = Math.max(then.rank(), otherwise.rank());
@@ -94,7 +94,7 @@ public final class TypeRules {
     /** Type of {@code -a} or {@code +a}. */
     public static ArrayType unary(ArrayType a, boolean minus) {
         ScalarType e = a.element();
-        return a.withElement(new ScalarType(e.field(), Promotion.negate(e.resolution(), minus)));
+        return a.withElement(new ScalarType(e.algebra(), Promotion.negate(e.resolution(), minus)));
     }
 
     /**
@@ -177,7 +177,7 @@ public final class TypeRules {
         requireCard(start, "range bound");
         requireCard(end, "range bound");
         ScalarType element = join(start.element(), end.element());
-        element = new ScalarType(element.field(), Promotion.defaultOf(element.resolution()));
+        element = new ScalarType(element.algebra(), Promotion.defaultOf(element.resolution()));
         Card length = Card.TOP;
         if (start.element().resolution() instanceof IntLiteral s && end.element().resolution() instanceof IntLiteral e) {
             BigInteger n = e.value().subtract(s.value());
@@ -386,8 +386,7 @@ public final class TypeRules {
     /** A cardinal: a non-negative integer scalar. */
     private static void requireCard(ArrayType t, String what) {
         Resolution r = t.element().resolution();
-        boolean integer = r.isInteger() || r instanceof IntLiteral;
-        if (!t.isScalar() || t.element().field() != Field.REAL || !integer) {
+        if (!t.isScalar() || t.element().algebra() != Algebra.INT) {
             throw new VelTypeException(what + " must be a non-negative integer scalar, not " + t);
         }
         if (r instanceof IntLiteral lit && lit.value().signum() < 0) {

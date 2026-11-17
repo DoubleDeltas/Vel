@@ -11,24 +11,24 @@ Kotlin 소스의 VEL을 처리하는 방식(KSP, Kotlin 컴파일러 플러그�
 ### 1.1. 기본 타입
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
-| `Byte` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}8}$ |
-| `Short` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}16}$ |
-| `Int` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$ |
-| `Long` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}64}$ |
+| `Byte` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}8}$ |
+| `Short` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}16}$ |
+| `Int` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$ |
+| `Long` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}64}$ |
 | `Float` | $\langle\mathrm{Real}\rangle_{\mathrm{F}32}$ |
 | `Double` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ |
 | `Boolean` | $\langle\mathrm{Bool}\rangle$ |
-| `Char` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}16}$[^1] |
+| `Char` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}16}$[^1] |
 
 ### 1.2. 부호 없는 정수
 Java와 달리 Kotlin에는 부호 없는 정수 타입이 있으며, $Z^+$ 해상도에 그대로 대응한다.
 
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
-| `UByte` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}8}$ |
-| `UShort` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}16}$ |
-| `UInt` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}32}$ |
-| `ULong` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}^{+}64}$ |
+| `UByte` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}8}$ |
+| `UShort` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}16}$ |
+| `UInt` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}32}$ |
+| `ULong` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}^{+}64}$ |
 
 ### 1.3. Nullable 타입
 `Int?`, `Double?` 등 nullable 타입은 1.1절, 1.2절의 타입과 같은 VEL 타입으로 취급한다. 값이 `null`이면 `NullPointerException`을 던진다(Java의 래퍼 타입과 같음).
@@ -38,7 +38,7 @@ Kotlin/JVM은 `java.math`를 그대로 쓴다.
 
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
-| `java.math.BigInteger` | $\langle\mathrm{Real}\rangle_{\mathrm{Z}\infty}$ |
+| `java.math.BigInteger` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}\infty}$ |
 | `java.math.BigDecimal` | $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$ |
 
 $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$의 정밀도 처리와 $\langle\mathrm{Real}\rangle_{\mathrm{D}n}$의 표현은 Java 매핑 1.3절, 1.4절과 같다. 기본 최종 정밀도는 `MathContext.DECIMAL128`이다.
@@ -89,11 +89,11 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). Kotlin에서 넘겨받은 
 ## 3. Kotlin 구조분해
 연산자 `component1()`, …, `componentN()`을 참조할 수 있는 객체(예: `Pair`, `Triple`, data class)는 **성분 객체**이며, Java 매핑 2.5절의 규칙으로 배열이 된다.
 
-각 성분 타입 $C_i \mapsto \langle\mathrm{Array}(\mathbf d_i, \mathbb K_i)\rangle_{R_i}$의 모양 $\mathbf d_i$와 스칼라 체 $\mathbb K_i$가 모두 같으면
+각 성분 타입 $C_i \mapsto \langle\mathrm{Array}(\mathbf d_i, \mathbb K_i)\rangle_{R_i}$의 모양 $\mathbf d_i$가 모두 같고 스칼라 대수에 상한 $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$이 있으면
 
 $$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
 
-이다. 성분이 스칼라면 $\langle\mathrm{Vec}(N, \mathbb K)\rangle_R$, 길이 $M$인 벡터면 $\langle\mathrm{Mat}(N, M, \mathbb K)\rangle_R$(성분 $i$가 $i$번째 행)다. 해상도가 다르면 넓은 쪽을 따른다.
+이다. 성분이 스칼라면 $\langle\mathrm{Vec}(N, \mathbb K)\rangle_R$, 길이 $M$인 벡터면 $\langle\mathrm{Mat}(N, M, \mathbb K)\rangle_R$(성분 $i$가 $i$번째 행)다. 스칼라 대수가 다르면 상한을, 해상도가 다르면 넓은 쪽을 따른다.
 
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
@@ -102,7 +102,7 @@ $$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \
 | `Triple<Float, Float, Float>` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}32}$ |
 | `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
 | `data class V(val x: Double, val y: Double, val z: Double)` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `Pair<Int, Boolean>` | 배열이 아님 (스칼라 체가 다름) |
+| `Pair<Int, Boolean>` | 배열이 아님 (스칼라 대수의 상한이 없음) |
 
 반대로 VEL 값이 성분 객체 타입으로 나갈 때는 성분별로 나눠 그 객체로 감싼다(Java 매핑 5절).
 

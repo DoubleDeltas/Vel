@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Array type {@code ⟨Array(d₁, …, dₙ, K)⟩_R}: the array field {@code Array(d₁, …, dₙ, K)} (type-system.md 1)
+ * Array type {@code ⟨Array(d₁, …, dₙ, K)⟩_R}: the array algebra {@code Array(d₁, …, dₙ, K)} (type-system.md 1)
  * with a resolution, i.e. the dimension sizes together with the element {@link ScalarType} {@code ⟨K⟩_R}.
  * For example Java {@code double[]} is {@code ⟨Vec(⊤, Real)⟩_F64}.
  * <p>

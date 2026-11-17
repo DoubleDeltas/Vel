@@ -39,7 +39,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 | 모듈 | 내용 |
 |---|---|
 | `vel-runtime` | `@Vel`(SOURCE 유지), `@Dim(java=…|vel=…)`(CLASS 유지, 배열 크기 지정), `VelInline.vel(String)`(플러그인 미적용 시 예외를 던지는 자리표시자). 사용자 런타임 클래스패스에 올라가는 유일한 모듈 |
-| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. 타입 모델은 `core.type` 패키지(`Card`, `Field`, `Resolution`, `Promotion`, `ScalarType`, `ArrayType`, `Shapes`, `BinaryOperator`, `TypeRules`) |
+| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. 타입 모델은 `core.type` 패키지(`Card`, `Algebra`, `Resolution`, `Promotion`, `ScalarType`, `ArrayType`, `Shapes`, `BinaryOperator`, `TypeRules`) |
 | `vel-processor` | `VelProcessor`: `@Vel` 메서드의 배치(추상 여부, 소속)와 문법을 검증하고, 오류를 어노테이션 값 위치에 보고 |
 | `vel-javac` | `VelJavacPlugin`: ANALYZE 단계 이후 `VelInline.vel` 호출(정규화된 이름으로 판별)을 찾아 문자열 리터럴 여부와 문법을 검증. `autoStart=true` |
 | `vel-examples` | B와 C 사용 예. `annotationProcessor`로 processor와 javac 모듈을 연결 |
@@ -77,7 +77,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - `pattern = expr` (구조 분해 대입, 결정됨): `(x, y, z) = v`, `[a, b; c, d] = m`. 각 대상은 원소 하나(스칼라)를 받고, 패턴과 값의 모양이 맞아야 한다(`TypeRules.destructure`). 대상은 일반 대입 대상과 같다. 행 길이 불일치·대상 중복은 `StructureChecker`가 거부. `=`만 가능. 블록 단위 분해는 오른쪽에 분할점을 쓴다(아래 분할 참고). `?`는 원소를 버리는 자리(결정됨): 여러 번 가능, 모양 검사에는 포함, 패턴 밖에서는 불가(토큰 `QUESTION`).
   - `expr`
   - 줄바꿈이나 `;`로 구분한다.
-- **조건식 (결정됨)**: `if c then a else b`는 식이다. 우선순위가 가장 낮고(else 뒤는 끝까지), `else` 필수, `else if`로 연결. 조건은 Bool 스칼라, 고른 가지만 평가, 결과는 두 가지의 공통 타입(`TypeRules.conditional`: 모양 일치, 체 ∨, 해상도 ⊔). `if`/`then`/`else` 뒤와 `then`/`else` 앞의 줄바꿈은 이어 쓰기.
+- **조건식 (결정됨)**: `if c then a else b`는 식이다. 우선순위가 가장 낮고(else 뒤는 끝까지), `else` 필수, `else if`로 연결. 조건은 Bool 스칼라, 고른 가지만 평가, 결과는 두 가지의 공통 타입(`TypeRules.conditional`: 모양 일치, 대수 ∨, 해상도 ⊔). `if`/`then`/`else` 뒤와 `then`/`else` 앞의 줄바꿈은 이어 쓰기.
   - **반환 규칙 (결정됨)**: 식 하나로 된 프로그램은 그 식이 반환값이다. 그 외에는 마지막 문장이 `return`이어야 하고, `return`은 마지막에만 올 수 있다. 문법이 아니라 `StructureChecker`가 파싱 직후 검사한다.
 - **식 우선순위** (높음 → 낮음):
   1. 기본 항
@@ -136,15 +136,15 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 원본: `docs/type-system.md`, `docs/type-mapping/java.md`
 
 - **용어 (결정됨, 2026-11-18 확립)**: 문서·코드·대화 모두 이 용어를 쓴다.
-  - **체**(field): 해상도 없는 수학적 구조. 스칼라 체와 그 배열. 예: `Real`, `Vec(3, Real)`, `Mat(m, n, Complex)`
-  - **스칼라 체**: 원자적인 체 `Bool`, `Real`, `Complex`. 코드의 `Field` enum.
+  - **대수**(algebra): 해상도 없는 수학적 구조. 스칼라 대수와 그 배열. 예: `Real`, `Vec(3, Real)`, `Mat(m, n, Complex)`
+  - **스칼라 대수**: 원자적인 대수 `Bool`, `Int`, `Real`, `Complex`. 코드의 `Algebra` enum.
   - **해상도**: `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`, `D∞`. 코드의 `Resolution`.
-  - **스칼라 타입**: 스칼라 체에 해상도를 적용한 타입. 예: `⟨Real⟩_F64`(`double`), `⟨Bool⟩`. 배열 타입의 원소는 스칼라 타입이다. 코드의 `ScalarType`.
-  - **타입**: 체에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `ScalarType`(스칼라 체+해상도), `ArrayType`(모양+`ScalarType`).
-  - 예전 문서의 "스칼라 타입(체)", "체 = 스칼라 타입" 같은 표현은 쓰지 않는다.
-- **체의 구성**:
+  - **스칼라 타입**: 스칼라 대수에 해상도를 적용한 타입. 예: `⟨Real⟩_F64`(`double`), `⟨Bool⟩`. 배열 타입의 원소는 스칼라 타입이다. 코드의 `ScalarType`.
+  - **타입**: 대수에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `ScalarType`(스칼라 대수+해상도), `ArrayType`(모양+`ScalarType`).
+  - 예전 문서의 "스칼라 타입(대수)", "대수 = 스칼라 타입" 같은 표현은 쓰지 않는다.
+- **대수의 구성**:
   - 모든 객체는 함수다.
-  - `Array(d…, K)`(K는 스칼라 체)는 0부터 시작하는 인덱스를 스칼라로 대응시키는 함수다.
+  - `Array(d…, K)`(K는 스칼라 대수)는 0부터 시작하는 인덱스를 스칼라로 대응시키는 함수다.
   - `Mat(m,n)`은 `Array(m,n)`이다.
   - `Vec(n)`은 `Mat(n,1)`, 즉 열벡터다.
   - 스칼라는 `Mat(1,1)`이다.
@@ -159,7 +159,11 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - **불변성 (결정됨, 1.5절)**: 모든 값은 불변이다. `m[i] = x`는 MATLAB처럼 복사 후 다시 쓰기이며 `m`을 새 값에 다시 묶는다.
   - Java에서 받은 배열은 VEL이 수정하지 않는다. 복사 생략 최적화는 VEL이 만든 값에만 적용한다.
   - Java 메서드 호출의 부수 효과는 막지 않는다.
-- **스칼라 체**: `Bool`, `Real <: Complex`. Bool의 수학적 분류(체인지 반환인지)는 **따지지 않기로 함**.
+- **스칼라 대수**: `Bool`, `Int <: Real <: Complex`. Bool은 다른 대수와 관계없다(`+`가 OR이라 0/1이 아님). (2026-11-18) 용어 "체(field)"는 Java 필드와 헷갈리고 Bool·Int·Vec에 수학적으로도 맞지 않아 **"대수(algebra)"**로 바꿨다. 코드는 `Algebra` enum, `ScalarType.algebra()`.
+  - **Int (결정됨 2026-11-18)**: 스칼라 대수 ↔ 해상도 조합은 `Int` ↔ `Zn`/`Z+n`/`Z∞`, `Real`/`Complex` ↔ `Fn`/`Dn`/`D∞`, `Bool` ↔ `Bool`뿐이다. 미정 리터럴은 수치 대수 어디에나 붙지만 소수·유리 리터럴은 `Int`에 못 붙는다. 정수 리터럴은 `Int`, 소수 리터럴은 `Real`.
+  - 정규화(`ScalarType.of`, `type-system.md` 3.1): 결과 대수가 `Real`/`Complex`인데 해상도가 정수면 `Zn → F64`, `Z∞ → D∞`. 결과 해상도가 정수가 아닌데 대수가 `Int`면 대수를 `Real`로. 예: `Int / Int`는 `⟨Real⟩_F64`, `j * int`는 `⟨Complex⟩_F64`.
+  - 인덱스와 범위 경계는 `Int` 스칼라여야 한다(`TypeRules.requireCard`).
+  - 복소 정수(`ComplexInt`)는 지금은 다루지 않는다. 필요하면 나중에 추가.
 - **해상도**: `Bool`, `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`(IEEE 754 십진 부동소수), `D∞`
 - **승격 규칙** (`type-system.md` 3장):
   - `⊑`(정확히 표현 가능): 암시적 변환은 이 방향으로만 허용한다. `F`와 `Dn` 사이는 서로 `⊑`가 아니다.
@@ -187,7 +191,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 원시 타입과 래퍼 타입은 위 해상도에 대응한다. `char`는 `Z+16`이다. 래퍼가 `null`이면 NPE.
   - `BigInteger`는 `Z∞`, `BigDecimal`은 `D∞`다. `Dn`은 Java 타입이 없어서 `BigDecimal` + `MathContext.DECIMALn`으로 표현한다.
   - 시퀀스는 **배열과 `List`로 한정**한다.
-  - **성분 객체 (결정됨)**: Java `record`와 `component1()`…`componentN()`이 있는 클래스(Kotlin `Pair`, `Triple`, data class)는 성분 체의 모양이 같고 스칼라 체가 같으면 `⟨Array(N, 𝐝, K)⟩_{R₁⊔…⊔Rₙ}`다(성분 모양 앞에 N 차원을 붙임). 스칼라 성분은 `Vec(N)`, 길이 M 벡터 성분은 `Mat(N, M)`. 해상도가 다르면 넓은 쪽. 어디서나 배열로 쓴다. VEL 값이 이 타입으로 나갈 때는 성분별로 나눠 생성자(record 표준 생성자, Kotlin 주 생성자)로 감싼다. (`java.md` 2.5·5절, `kotlin.md` 3절)
+  - **성분 객체 (결정됨)**: Java `record`와 `component1()`…`componentN()`이 있는 클래스(Kotlin `Pair`, `Triple`, data class)는 성분 대수의 모양이 같고 스칼라 대수에 상한 `K = K₁∨…∨Kₙ`이 있으면 `⟨Array(N, 𝐝, K)⟩_{R₁⊔…⊔Rₙ}`다(예: `Pair<Int, Double>` → `⟨Vec(2, Real)⟩_F64`, `Pair<Int, Boolean>`은 배열 아님)(성분 모양 앞에 N 차원을 붙임). 스칼라 성분은 `Vec(N)`, 길이 M 벡터 성분은 `Mat(N, M)`. 해상도가 다르면 넓은 쪽. 어디서나 배열로 쓴다. VEL 값이 이 타입으로 나갈 때는 성분별로 나눠 생성자(record 표준 생성자, Kotlin 주 생성자)로 감싼다. (`java.md` 2.5·5절, `kotlin.md` 3절)
   - `F[n]`은 `Vec(n)`이다.
   - `F[m][n]`은 `Mat(n,m)`이다. 차원을 역순으로 두는 **열 우선** 방식이며, `a[i][j]`는 `(j, i)`에 대응한다.
   - 크기는 기본 `⊤`이고, `@Dim`으로 지정한다. `@Dim(...)`(`value`) = `@Dim(vel = {...})`(VEL 순서, 행 먼저), `@Dim(java = {...})`(Java 선언 순서) 중 정확히 하나를 쓴다. 둘 이상이면 `VelTypeException`(`DimSpec.fromAnnotation`). 지정한 크기는 검사하지 않고 신뢰한다.
@@ -236,8 +240,8 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - 수식 표기:
   - 벡터 값은 `\mathbf`로 쓴다 (예: $\mathbf d$, $\mathbf v$). `\vec`, `\boldsymbol` 등은 쓰지 않는다.
   - 타입 이름은 `\mathrm` (예: $\mathrm{Vec}$, $\mathrm{Real}$)
-  - 체 변수는 `\mathbb` (예: $\mathbb K$)
+  - 대수 변수는 `\mathbb` (예: $\mathbb K$)
   - **해상도 기호 (2026-11-18 변경)**: 종류와 비트 수를 묶은 하나의 기호로 쓴다: `Zn`, `Z+n`(LaTeX `\mathrm{Z}^{+}n`), `Z∞`, `Fn`, `Dn`, `D∞`. LaTeX에서는 `\mathrm{F}64`, 타입에 붙이면 `⟨Real⟩_{\mathrm{F}64}`. 비트 수가 식이면 대괄호(`Z[max(a, b) + 1]`). 함수 호출처럼 읽히는 `F(64)`, `⟨K⟩_F(64)`는 쓰지 않으며, 줄임 표기 구분도 없앴다. 코드의 `Resolution.toString()`도 같은 기호(`F64`, `Z+16`, `D∞`)를 쓴다.
-  - 타입 표기 `⟨K⟩_R`의 K는 스칼라 체뿐 아니라 배열 체도 된다: `⟨Array(𝐝, K)⟩_R = Array(𝐝, ⟨K⟩_R)`. 예: `⟨Vec(3, Real)⟩_F64`. `Vec(2, F64)`처럼 스칼라 체 자리에 해상도만 쓰지 않는다. 해상도 없이 쓴 `Vec(3, Real)`은 타입이 아니라 체이므로, Java/Kotlin 타입과 짝짓는 표에는 항상 해상도까지 쓴 타입을 적는다.
+  - 타입 표기 `⟨K⟩_R`의 K는 스칼라 대수뿐 아니라 배열 대수도 된다: `⟨Array(𝐝, K)⟩_R = Array(𝐝, ⟨K⟩_R)`. 예: `⟨Vec(3, Real)⟩_F64`. `Vec(2, F64)`처럼 스칼라 대수 자리에 해상도만 쓰지 않는다. 해상도 없이 쓴 `Vec(3, Real)`은 타입이 아니라 대수이므로, Java/Kotlin 타입과 짝짓는 표에는 항상 해상도까지 쓴 타입을 적는다.
 - 줄바꿈은 LF로 고정한다(`.gitattributes`). 예외로 `*.bat`, `*.cmd`는 CRLF.
 - 커밋은 사용자가 요청할 때만 한다. 원격은 `origin` = https://github.com/DoubleDeltas/Vel.git, 작업 브랜치는 `master`.

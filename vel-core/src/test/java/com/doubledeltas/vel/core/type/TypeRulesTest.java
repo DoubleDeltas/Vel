@@ -26,7 +26,7 @@ class TypeRulesTest {
 
     private static final ScalarType F64 = ScalarType.real(Resolution.FLOAT64);
     private static final ScalarType F32 = ScalarType.real(Resolution.FLOAT32);
-    private static final ScalarType I32 = ScalarType.real(Resolution.INT32);
+    private static final ScalarType I32 = ScalarType.integer(Resolution.INT32);
 
     private static Card n(long v) {
         return Card.of(v);
@@ -162,7 +162,7 @@ class TypeRulesTest {
         assertThrows(VelTypeException.class, () -> TypeRules.binary(ADD, b, lit(1)));      // Bool vs Real
         assertThrows(VelTypeException.class, () -> TypeRules.binary(FLOOR_MOD, c, lit(2))); // no %% on Complex
         // Real ∨ Complex = Complex
-        assertEquals(Field.COMPLEX, TypeRules.binary(ADD, c, lit(1)).element().field());
+        assertEquals(Algebra.COMPLEX, TypeRules.binary(ADD, c, lit(1)).element().algebra());
         // 2 * j follows a partner: j's parts are integer literals
         assertEquals(ScalarType.complex(Resolution.FLOAT32),
                 TypeRules.binary(MUL, ArrayType.scalar(F32), ArrayType.scalar(ScalarType.IMAGINARY_UNIT)).element());
@@ -359,6 +359,52 @@ class TypeRulesTest {
         assertThrows(VelTypeException.class,
                 () -> TypeRules.conditional(ArrayType.vec(n(2), ScalarType.BOOL), lit(1), lit(2)));
         assertThrows(VelTypeException.class, () -> TypeRules.conditional(cond, cond, lit(2)));
+    }
+
+    // ---- Int scalar algebra ---------------------------------------------------------------------------
+
+    @Test
+    void intRealComplexHierarchy() {
+        assertTrue(Algebra.INT.isSubtypeOf(Algebra.REAL));
+        assertTrue(Algebra.INT.isSubtypeOf(Algebra.COMPLEX));
+        assertTrue(Algebra.REAL.isSubtypeOf(Algebra.COMPLEX));
+        assertFalse(Algebra.REAL.isSubtypeOf(Algebra.INT));
+        // Bool is unrelated to the numeric algebras
+        assertFalse(Algebra.BOOL.isSubtypeOf(Algebra.INT));
+        assertFalse(Algebra.INT.isSubtypeOf(Algebra.BOOL));
+        assertThrows(VelTypeException.class, () -> Algebra.join(Algebra.BOOL, Algebra.INT));
+        assertEquals(Algebra.REAL, Algebra.join(Algebra.INT, Algebra.REAL));
+    }
+
+    @Test
+    void integerResolutionsBelongToInt() {
+        // Zn, Z+n, Z∞ only with Int; Int only with them
+        assertThrows(IllegalArgumentException.class, () -> ScalarType.real(Resolution.INT32));
+        assertThrows(IllegalArgumentException.class, () -> ScalarType.complex(Resolution.signed(16)));
+        assertThrows(IllegalArgumentException.class, () -> ScalarType.integer(Resolution.FLOAT64));
+        assertThrows(IllegalArgumentException.class, () -> ScalarType.integer(Resolution.BIG_DECIMAL));
+        // literals stay untyped: an integer literal is Int, a decimal literal is not
+        assertEquals(Algebra.INT, ScalarType.literal(BigInteger.ONE).algebra());
+        assertEquals(Algebra.REAL, ScalarType.literal(new BigDecimal("0.5")).algebra());
+    }
+
+    @Test
+    void mixingIntWithRealOrComplexMakesTheResolutionReal() {
+        // Int / Int is Real (true division)
+        assertEquals(ArrayType.scalar(F64), TypeRules.binary(DIV, ArrayType.scalar(I32), ArrayType.scalar(I32)));
+        // Int + Real joins to Real
+        assertEquals(ArrayType.scalar(F32), TypeRules.binary(ADD, ArrayType.scalar(I32), ArrayType.scalar(F32)));
+        // j * x with x: Int Z32 cannot be ⟨Complex⟩_Z32: the resolution becomes F64
+        assertEquals(ArrayType.scalar(ScalarType.complex(Resolution.FLOAT64)),
+                TypeRules.binary(MUL, ArrayType.scalar(ScalarType.IMAGINARY_UNIT), ArrayType.scalar(I32)));
+        // Z∞ becomes D∞
+        assertEquals(ScalarType.complex(Resolution.BIG_DECIMAL),
+                TypeRules.join(ScalarType.integer(Resolution.BIG_INT), ScalarType.complex(Resolution.literal(BigInteger.ONE))));
+        // Int stays Int when nothing real is involved
+        assertEquals(ArrayType.scalar(I32), TypeRules.binary(FLOOR_MOD, ArrayType.scalar(I32), lit(3)));
+        // an index must be Int
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.index(ArrayType.vec(n(3), F64), List.of(Subscript.at(ArrayType.scalar(F64)))));
     }
 
     // ---- @Dim -------------------------------------------------------------------------------------

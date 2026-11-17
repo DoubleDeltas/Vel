@@ -6,29 +6,29 @@ $$ \mathrm{Card} := 0 \mid \mathbb{N} \mid \top $$
 다음과 같이 순서를 가진다.
 $$ 0 < 1 < 2 < \cdots < \top$$
 
-### 0.2. 체, 해상도, 타입
-- **체**(field): 값이 속하는 수학적 구조다. 값을 어떻게 표현할지(해상도)는 정하지 않는다. 스칼라 체와, 스칼라 체를 원소로 하는 배열(벡터, 행렬 등)이 체다. 예: $\mathrm{Real}$, $\mathrm{Complex}$, $\mathrm{Vec}(3, \mathrm{Real})$, $\mathrm{Mat}(m, n, \mathrm{Complex})$
-- **스칼라 체**(scalar field): 원자적인 체다. $\mathrm{Bool}$, $\mathrm{Real}$, $\mathrm{Complex}$ 세 가지가 있다(1.1절).
+### 0.2. 대수, 해상도, 타입
+- **대수**(algebra): 값이 속하는 수학적 구조다. 값을 어떻게 표현할지(해상도)는 정하지 않는다. 스칼라 대수와, 스칼라 대수를 원소로 하는 배열(벡터, 행렬 등)이 대수다. 예: $\mathrm{Real}$, $\mathrm{Complex}$, $\mathrm{Vec}(3, \mathrm{Real})$, $\mathrm{Mat}(m, n, \mathrm{Complex})$
+- **스칼라 대수**(scalar algebra): 원자적인 대수다. $\mathrm{Bool}$, $\mathrm{Int}$, $\mathrm{Real}$, $\mathrm{Complex}$ 네 가지가 있다(1.1절).
 - **해상도**(resolution): 원소를 표현하는 범위와 정밀도다. 예: $\mathrm{Z}32$, $\mathrm{F}64$, $\mathrm{D}\infty$ (2장)
-- **타입**(type): 체에 해상도를 적용한 것이다. 체 $\mathbb K$에 해상도 $R$을 적용한 타입을 $\langle \mathbb K \rangle_R$로 쓴다. VEL의 값은 타입을 가지며, **타입이 Java/Kotlin의 타입과 대응한다.**
-- **스칼라 타입**(scalar type): 스칼라 체에 해상도를 적용한 타입이다. 예: $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$(Java `double`), $\langle\mathrm{Bool}\rangle$(Java `boolean`). 배열 타입 $\langle\mathrm{Array}(\mathbf d, \mathbb K)\rangle_R$의 원소는 스칼라 타입 $\langle\mathbb K\rangle_R$이다.
+- **타입**(type): 대수에 해상도를 적용한 것이다. 대수 $\mathbb K$에 해상도 $R$을 적용한 타입을 $\langle \mathbb K \rangle_R$로 쓴다. VEL의 값은 타입을 가지며, **타입이 Java/Kotlin의 타입과 대응한다.**
+- **스칼라 타입**(scalar type): 스칼라 대수에 해상도를 적용한 타입이다. 예: $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$(Java `double`), $\langle\mathrm{Bool}\rangle$(Java `boolean`). 배열 타입 $\langle\mathrm{Array}(\mathbf d, \mathbb K)\rangle_R$의 원소는 스칼라 타입 $\langle\mathbb K\rangle_R$이다.
 
-| 체 | 타입 | Java 타입 |
+| 대수 | 타입 | Java 타입 |
 | --- | --- | --- |
 | $\mathrm{Real}$ | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | `double` |
-| $\mathrm{Real}$ | $\langle\mathrm{Real}\rangle_{\mathrm{Z}32}$ | `int` |
+| $\mathrm{Int}$ | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$ | `int` |
 | $\mathrm{Bool}$ | $\langle\mathrm{Bool}\rangle$ | `boolean` |
 | $\mathrm{Vec}(\top, \mathrm{Real})$ | $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$ | `double[]` |
 
-1장은 체(값의 모양과 수학적 구조)를, 2장과 3장은 해상도를 다룬다. 1장의 모양 규칙은 타입에도 그대로 적용된다.
+1장은 대수(값의 모양과 수학적 구조)를, 2장과 3장은 해상도를 다룬다. 1장의 모양 규칙은 타입에도 그대로 적용된다.
 
-## 1. 체의 구성
+## 1. 대수의 구성
 VEL의 모든 객체는 **함수**로 취급한다. 즉 VEL에서 함수는 일급(first-class) 객체다.
 $$ X <: A \mapsto B$$
 
-**배열**은 스칼라 체 $\mathbb K$가 정해졌을 때, 1개 이상의 서수에 따라 스칼라 값이 정해지는 함수다.
+**배열**은 스칼라 대수 $\mathbb K$가 정해졌을 때, 1개 이상의 서수에 따라 스칼라 값이 정해지는 함수다.
 $$ \mathrm{Array}(d_1,d_2,\cdots,d_n,\mathbb K) := \prod [0,d_i) \mapsto \mathbb K \quad (d_i<:\mathrm{Card})$$
-인덱스가 0부터 시작함에 유의하라. 스칼라 체 $\mathbb K$에 대해서는 후술한다.
+인덱스가 0부터 시작함에 유의하라. 스칼라 대수 $\mathbb K$에 대해서는 후술한다.
 
 **행렬**은 랭크 2의 배열이다.
 $$ \mathrm{Mat}(m,n,\mathbb K) := \mathrm{Array}(m,n,\mathbb K)$$
@@ -36,18 +36,21 @@ $$ \mathrm{Mat}(m,n,\mathbb K) := \mathrm{Array}(m,n,\mathbb K)$$
 **벡터**는 열벡터로 표현한다.
 $$ \mathrm{Vec}(n, \mathbb K) := \mathrm{Mat}(n, 1, \mathbb K) $$
 
-**스칼라**는 자신의 스칼라 체에 대해 $1 \times 1$ 행렬로 취급한다.
+**스칼라**는 자신의 스칼라 대수에 대해 $1 \times 1$ 행렬로 취급한다.
 $$ [\mathbb K]:=\mathrm{Mat}(1,1,\mathbb K) $$
 
-### 1.1. 스칼라 체
-스칼라 체는 VEL의 원자적인 체이며, 연산의 의미를 정한다.
+### 1.1. 스칼라 대수
+스칼라 대수는 VEL의 원자적인 대수이며, 연산의 의미를 정한다.
   - Boolean $\mathrm{Bool}$: 부울 대수[^1]
+  - Int $\mathrm{Int}$: 정수
   - Real $\mathrm{Real}$: 실수
   - Complex $\mathrm{Complex}$: 복소수
 
-아래와 같은 자명한 위계를 갖는다.
-$$\mathrm{Real} <: \mathrm{Complex}$$
-Boolean과 Real 사이에는 명시적인 위계를 갖지 않는다.
+수치 대수는 아래와 같은 자명한 위계를 갖는다.
+$$\mathrm{Int} <: \mathrm{Real} <: \mathrm{Complex}$$
+$\mathrm{Bool}$은 다른 스칼라 대수와 위계를 갖지 않는다. $\mathrm{Bool}$의 $+$는 OR이므로 $\mathrm{Bool}$을 0과 1인 정수로 볼 수 없다.
+
+복소 정수(가우스 정수)는 지금은 다루지 않는다. 필요해지면 별도의 스칼라 대수로 추가한다.
 
 ### 1.2. 크기가 $\top$인 차원
 배열의 각 차원 크기 $d_i$는 서수이므로 $\top$일 수 있다. $\top$은 **컴파일 타임에 크기를 모르는 차원**을 뜻한다. 실제 길이는 실행 시점에 정해진다.
@@ -109,14 +112,14 @@ b[0] = 9      # b = (9, 2, 3), a는 여전히 (1, 2, 3)
 
 대입하는 값은 선택한 영역에 **대입 가능**해야 한다.
 - 모양: 선택한 영역과 같거나, 브로드캐스팅으로 영역에 맞출 수 있어야 한다(예: `m[0, :] = 0`).
-- 원소: 값과 배열 원소의 스칼라 체에 상한($\vee$)이 있어야 하고, 해상도는 $\sqcup$를 따른다. `Bool`과 수치는 섞을 수 없다.
+- 원소: 값과 배열 원소의 스칼라 대수에 상한($\vee$)이 있어야 하고, 해상도는 $\sqcup$를 따른다. `Bool`과 수치는 섞을 수 없다.
 - 값의 해상도가 더 크면 **배열 전체가 커진 해상도를 따른다.** 예: $\mathrm{Z}32$ 배열에 `m[0, 0] = 0.5`를 하면 `m`은 $\mathrm{F}64$ 배열이 된다.
 
 **구조 분해 대입** `(x, y, z) = v`, `[a, b; c, d] = m`은 값을 앞 차원부터 나눠 대상에 묶는다. 튜플 패턴(대상 $k$개)은 첫 차원이 $k$인 값을, 행렬 패턴($r$행 $c$열)은 앞의 두 차원이 $r \times c$인 값을 받으며($\top$는 1.2절), 각 대상은 남은 차원을 받는다(1.7절). 스칼라 튜플이나 행렬이면 각 대상은 스칼라다. 버리는 자리 `?`도 모양에는 포함된다.
 
 ### 1.6. 범위와 인덱싱
 **범위** `a:b`는 끝을 포함하지 않는 구간 $[a, b)$의 인덱스로 이루어진 행벡터다(Python과 같음).
-- 경계 $a$, $b$는 서수(0 이상의 정수 스칼라)여야 한다. 인덱스 안의 `end`는 그 차원의 **길이**다. 그래서 `a:end`는 끝까지이고, 마지막 원소의 인덱스는 `end-1`이다.
+- 경계 $a$, $b$는 서수($\mathrm{Int}$ 스칼라이며 0 이상)여야 한다. 인덱스 안의 `end`는 그 차원의 **길이**다. 그래서 `a:end`는 끝까지이고, 마지막 원소의 인덱스는 `end-1`이다.
 - 길이는 두 경계가 모두 정수 리터럴이면 $\max(0, b - a)$이고, 그 외(변수, `end`)에는 $\top$이다.
 - 증분 형태는 없다.
 
@@ -151,7 +154,7 @@ $$ M[\mathbf a, \mathbf b] : \mathrm{Array}(k, l, h, w, \mathbb K) $$
 ### 1.8. 조건식
 `if c then a else b`에서 조건 $c$는 $\mathrm{Bool}$ 스칼라이며, 고른 쪽 가지만 평가한다. 결과 타입은 두 가지 타입의 공통 타입이다.
 - 모양: 두 가지의 차원 크기가 같아야 한다. $\top$이 섞이면 결과 크기는 $\top$이다(1.2절).
-- 원소: 스칼라 체는 $\vee$, 해상도는 $\sqcup$(3.3절)를 따른다. 예: $\mathrm{Z}32$와 $\mathrm{F}32$ 가지의 결과는 $\mathrm{F}32$다. $\mathrm{Bool}$과 수치 가지는 섞을 수 없다.
+- 원소: 스칼라 대수는 $\vee$, 해상도는 $\sqcup$(3.3절)를 따른다. 예: $\mathrm{Z}32$와 $\mathrm{F}32$ 가지의 결과는 $\mathrm{F}32$다. $\mathrm{Bool}$과 수치 가지는 섞을 수 없다.
 
 ## 2. 해상도 (Resolution)
 원소를 표현할 수 있는 범위(range)와 정확도(precision)의 그룹.
@@ -172,21 +175,35 @@ $$ M[\mathbf a, \mathbf b] : \mathrm{Array}(k, l, h, w, \mathbb K) $$
 
 비트 수가 식이면 대괄호로 묶는다. 예: $\mathrm{Z}[\max(a, b) + 1]$
 
-체 $\mathbb K$에 해상도 $R$을 적용한 **타입**은 $\langle \mathbb K \rangle_R$로 쓴다(0.2절). 예: $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$(Java `double`), $\langle\mathrm{Complex}\rangle_{\mathrm{F}32}$. 해상도만 따로 다룰 때는 $\mathrm{F}64$처럼 기호만 쓴다.
+대수 $\mathbb K$에 해상도 $R$을 적용한 **타입**은 $\langle \mathbb K \rangle_R$로 쓴다(0.2절). 예: $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$(Java `double`), $\langle\mathrm{Complex}\rangle_{\mathrm{F}32}$. 해상도만 따로 다룰 때는 $\mathrm{F}64$처럼 기호만 쓴다.
 
-체가 배열이면 해상도는 그 원소인 스칼라 체마다 적용된다.
+대수가 배열이면 해상도는 그 원소인 스칼라 대수마다 적용된다.
 $$ \langle \mathrm{Array}(\mathbf d, \mathbb K) \rangle_R = \mathrm{Array}(\mathbf d, \langle\mathbb K\rangle_R) $$
-예: 타입 $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$는 원소가 64비트 부동소수인 실수 3차원 벡터다(Java `@Dim(3) double[]`). 해상도 없이 쓴 $\mathrm{Vec}(3, \mathrm{Real})$은 타입이 아니라 체다.
+예: 타입 $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$는 원소가 64비트 부동소수인 실수 3차원 벡터다(Java `@Dim(3) double[]`). 해상도 없이 쓴 $\mathrm{Vec}(3, \mathrm{Real})$은 타입이 아니라 대수다.
+
+스칼라 대수와 해상도의 조합은 다음으로 제한한다.
+
+| 스칼라 대수 | 해상도 |
+| --- | --- |
+| $\mathrm{Bool}$ | (없음) |
+| $\mathrm{Int}$ | $\mathrm{Z}n$, $\mathrm{Z}^{+}n$, $\mathrm{Z}\infty$ |
+| $\mathrm{Real}$, $\mathrm{Complex}$ | $\mathrm{F}n$, $\mathrm{D}n$, $\mathrm{D}\infty$ |
+
+즉 정수 해상도 $\mathrm{Z}n$, $\mathrm{Z}^{+}n$, $\mathrm{Z}\infty$는 $\mathrm{Int}$ 전용이다.
 
 Java/Kotlin 타입과의 구체적인 대응은 `./type-mapping`에 둔다.
 
 ## 3. 해상도 승격 (Promotion)
-스칼라 체 $\mathbb K$와 해상도는 독립적으로 승격한다. 이 장의 규칙은 해상도만 다루므로 $\mathrm{Z}n$, $\mathrm{F}n$처럼 해상도 기호(2장)로 쓴다.
+스칼라 대수 $\mathbb K$와 해상도는 독립적으로 승격한다. 이 장의 규칙은 해상도만 다루므로 $\mathrm{Z}n$, $\mathrm{F}n$처럼 해상도 기호(2장)로 쓴다.
 
-### 3.1. 스칼라 체의 승격
-이항 연산 결과의 스칼라 체는 두 피연산자 스칼라 체의 상한(join)이다. 즉 $\mathrm{Real} \vee \mathrm{Complex} = \mathrm{Complex}$.
+### 3.1. 스칼라 대수의 승격
+이항 연산 결과의 스칼라 대수는 두 피연산자 스칼라 대수의 상한(join)이다. 예: $\mathrm{Int} \vee \mathrm{Real} = \mathrm{Real}$, $\mathrm{Real} \vee \mathrm{Complex} = \mathrm{Complex}$.
 
-$\mathrm{Bool}$은 다른 스칼라 체와 상한을 갖지 않으므로, $\mathrm{Bool}$과 $\mathrm{Real}$/$\mathrm{Complex}$ 사이의 연산은 타입 오류다.
+$\mathrm{Bool}$은 다른 스칼라 대수와 상한을 갖지 않으므로, $\mathrm{Bool}$과 수치 대수 사이의 연산은 타입 오류다.
+
+스칼라 대수와 해상도를 따로 승격한 뒤, 조합 제한(2장)을 지키도록 맞춘다.
+- 결과 스칼라 대수가 $\mathrm{Real}$이나 $\mathrm{Complex}$인데 해상도가 정수 해상도면, 해상도를 $\mathrm{Z}n \to \mathrm{F}64$, $\mathrm{Z}\infty \to \mathrm{D}\infty$로 바꾼다. 예: `j * x`($x : \langle\mathrm{Int}\rangle_{\mathrm{Z}32}$)는 $\langle\mathrm{Complex}\rangle_{\mathrm{F}64}$다.
+- 결과 해상도가 정수 해상도가 아닌데 스칼라 대수가 $\mathrm{Int}$면, 스칼라 대수를 $\mathrm{Real}$로 바꾼다. 예: $\mathrm{Int}$끼리의 참 나눗셈 `/`는 $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$다.
 
 ### 3.2. 표현 순서
 해상도 $A$의 모든 값을 해상도 $B$가 **정확히** 표현할 수 있을 때 $A \sqsubseteq B$로 쓴다.
@@ -242,7 +259,7 @@ VEL의 중간 연산은 해상도를 최대한 높은 쪽으로 유지한다. �
 | --- | --- |
 | 단항 $-$ on $\mathrm{Z}^{+}n$ | $\mathrm{Z}[n+1]$ (최소 연산 폭 적용) |
 | $\mathrm{Z}^{+}a - \mathrm{Z}^{+}b$ | $\mathrm{Z}[\max(a, b) + 1]$ (최소 연산 폭 적용) |
-| 정수 $/$ 정수 | $\mathrm{F}64$ (참 나눗셈). $\mathrm{Z}\infty$가 포함되면 $\mathrm{D}\infty$ |
+| $\mathrm{Int}$ $/$ $\mathrm{Int}$ | 참 나눗셈. 스칼라 대수는 $\mathrm{Real}$, 해상도는 $\mathrm{F}64$($\mathrm{Z}\infty$가 포함되면 $\mathrm{D}\infty$) |
 | `o+` (배타적 논리합) | $\mathrm{Bool}$끼리만 정의된다. 결과는 $\langle\mathrm{Bool}
 angle$ |
 | `//` (내림 몫) | $-\infty$ 방향으로 내린 몫(Python `//`, Java `Math.floorDiv`와 같음). 해상도는 $\sqcup$ 규칙을 따른다(정수끼리는 정수) |
@@ -325,9 +342,9 @@ VEL 내부 지역 변수에 대입하는 것은 중간 연산이다.
 분수 표현은 연산이 이어질수록 분자·분모의 자릿수가 커질 수 있다. 반복 누적에서는 정확도를 얻는 대신 비용이 든다.
 
 ### 3.4. 리터럴
-리터럴은 **미정 해상도**를 가지며, 함께 쓰인 피연산자의 해상도를 따른다.
-- 정수 리터럴은 상대 해상도가 그 값을 정확히 표현할 수 있으면 그 해상도를 따른다. 예: `0.5 * x`에서 `x`가 $\mathrm{F}32$이면 `0.5`도 $\mathrm{F}32$.
-- 소수 리터럴은 상대가 $\mathrm{F}n$, $\mathrm{D}n$, $\mathrm{D}\infty$일 때만 그 해상도를 따른다.
+리터럴은 **미정 해상도**를 가지며, 함께 쓰인 피연산자의 해상도를 따른다. 정수 리터럴의 스칼라 대수는 $\mathrm{Int}$, 소수 리터럴의 스칼라 대수는 $\mathrm{Real}$이다.
+- 정수 리터럴은 상대 해상도가 그 값을 정확히 표현할 수 있으면 그 해상도를 따른다. 예: `2 * x`에서 `x`가 $\langle\mathrm{Real}\rangle_{\mathrm{F}32}$이면 결과는 $\langle\mathrm{Real}\rangle_{\mathrm{F}32}$, `x`가 $\langle\mathrm{Int}\rangle_{\mathrm{Z}8}$이면 `2`도 $\mathrm{Z}8$이다(결과는 최소 연산 폭에 따라 $\mathrm{Z}32$).
+- 소수 리터럴은 상대가 $\mathrm{F}n$, $\mathrm{D}n$, $\mathrm{D}\infty$일 때만 그 해상도를 따른다. 예: `0.5 * x`에서 `x`가 $\mathrm{F}32$이면 `0.5`도 $\mathrm{F}32$.
 - 따를 상대가 없거나 표현할 수 없으면 기본 해상도를 쓴다.
   - 정수 리터럴: $\mathrm{Z}32$, 범위를 넘으면 $\mathrm{Z}64$, 그것도 넘으면 $\mathrm{Z}\infty$
   - 소수 리터럴: $\mathrm{F}64$
@@ -342,4 +359,4 @@ VEL 내부 지역 변수에 대입하는 것은 중간 연산이다.
 배열 간 원소별 연산의 원소 해상도는 위 규칙을 원소 해상도에 적용해 정한다.
 $$ \mathrm{Array}(\mathbf d, \langle\mathbb K_1\rangle_A) \circ \mathrm{Array}(\mathbf d, \langle\mathbb K_2\rangle_B) : \mathrm{Array}(\mathbf d, \langle\mathbb K_1 \vee \mathbb K_2\rangle_{A \sqcup B}) $$
 
-[^1]: 엄밀히 수학적으로는 체(field)가 아니지만 VEL에서는 스칼라 체로 취급한다. Boolean 체에서는 $+$ 연산을 OR로, $\cdot$ 연산을 AND로, `o+`($\oplus$) 연산을 XOR로 적용한다.
+[^1]: $\mathrm{Bool}$ 대수에서는 $+$ 연산을 OR로, $\cdot$ 연산을 AND로, `o+`($\oplus$) 연산을 XOR로 적용한다.
