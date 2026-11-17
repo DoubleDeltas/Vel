@@ -138,9 +138,9 @@ class VelFrontendTest {
     }
 
     @Test
-    void rangesAreInclusiveWithLowestPrecedence() {
+    void rangesHaveLowestPrecedence() {
         assertEquals("(singleExpression (expr (expr (primary a)) : (expr (primary b))) <EOF>)", tree("a:b"));
-        // only a:b: no step form, no range inside a range
+        // outside a subscript a range is just a:b; chains of cut points are subscripts only
         assertTrue(VelFrontend.parseExpression("0:2:10").hasErrors());
         assertTrue(VelFrontend.parseExpression("a:b:c:d").hasErrors());
         // a+1:b-1 == (a+1):(b-1)
@@ -219,7 +219,7 @@ class VelFrontendTest {
 
     @Test
     void indexAndSubMatrixAssignment() {
-        for (String src : new String[] {"m[0, 1] = 2", "m[0:2, :] = B", "v[end] += 1", "m[:, j] .*= 3"}) {
+        for (String src : new String[] {"m[0, 1] = 2", "m[0:2, :] = B", "v[end-1] += 1", "m[:, j] .*= 3"}) {
             var result = VelFrontend.parseProgram(src + "\nreturn m");
             assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
         }
@@ -291,6 +291,19 @@ class VelFrontendTest {
         assertFalse(VelFrontend.parseProgram("(m[0], `j`) = v\nreturn m").hasErrors());
         // a tuple literal on its own is still an expression
         assertFalse(VelFrontend.parseProgram("(x, y)").hasErrors());
+    }
+
+    @Test
+    void cutPointsAreSubscripts() {
+        // the example: [A, B; C, D] = M[0:2:3, 0:1:3]
+        var blocks = VelFrontend.parseProgram("M = [1, 2, 3; 4, 5, 6; 7, 8, 9]\n[A, B; C, D] = M[0:2:3, 0:1:3]\nreturn A");
+        assertFalse(blocks.hasErrors(), () -> blocks.diagnostics().toString());
+        // a block tensor can also be bound to a single variable, and chains can be longer
+        assertFalse(VelFrontend.parseProgram("T = M[0:2:4:6, :]\nreturn T").hasErrors());
+        assertFalse(VelFrontend.parseExpression("v[0:1:3:6]").hasErrors());
+        // chains are not values outside a subscript
+        assertTrue(VelFrontend.parseProgram("x = 0:1:3\nreturn x").hasErrors());
+        assertTrue(VelFrontend.parseExpression("f(0:1:3)").hasErrors());
     }
 
     @Test

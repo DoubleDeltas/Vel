@@ -200,7 +200,8 @@ class TypeRulesTest {
 
     @Test
     void rangesHaveCardinalBounds() {
-        assertEquals(ArrayType.mat(n(1), n(5), I32), TypeRules.range(lit(0), lit(4)));
+        // [0, 4): end-exclusive
+        assertEquals(ArrayType.mat(n(1), n(4), I32), TypeRules.range(lit(0), lit(4)));
         assertEquals(ArrayType.mat(n(1), n(0), I32), TypeRules.range(lit(3), lit(1)));      // empty
         // a non-literal bound (a variable, or end) gives length ⊤
         assertEquals(ArrayType.mat(n(1), TOP, I32), TypeRules.range(lit(0), ArrayType.scalar(I32)));
@@ -218,7 +219,7 @@ class TypeRulesTest {
     void indexing() {
         ArrayType m = mat(n(3), n(4));
         Subscript row1 = Subscript.at(lit(1));
-        Subscript cols = Subscript.span(TypeRules.range(lit(0), lit(1)));
+        Subscript cols = Subscript.span(TypeRules.range(lit(0), lit(2)));   // [0, 2)
         // m[i, j] is a scalar, m[1, :] a row, m[:, 0:1] a 3x2 block
         assertTrue(TypeRules.index(m, List.of(row1, Subscript.at(lit(2)))).isScalar());
         assertEquals(mat(n(1), n(4)), TypeRules.index(m, List.of(row1, Subscript.all())));
@@ -268,6 +269,57 @@ class TypeRulesTest {
         assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.vec(n(2), F64), 3, 1));
         assertThrows(VelTypeException.class, () -> TypeRules.destructure(mat(n(2), n(2)), 4, 1));
         assertThrows(VelTypeException.class, () -> TypeRules.destructure(ArrayType.of(F64, n(2), n(2), n(2)), 2, 2));
+    }
+
+    @Test
+    void partitionedIndexingGivesABlockTensor() {
+        ArrayType m = ArrayType.mat(n(3), n(3), I32);
+        Subscript rows023 = Subscript.partition(List.of(lit(0), lit(2), lit(3)));   // [0,2), [2,3)
+        Subscript cols013 = Subscript.partition(List.of(lit(0), lit(1), lit(3)));   // [0,1), [1,3)
+        // blocks of different sizes: block sizes are ⊤, 2x2 blocks
+        ArrayType t = TypeRules.index(m, List.of(rows023, cols013));
+        assertEquals(ArrayType.of(I32, TOP, TOP, n(2), n(2)), t);
+        // equal blocks keep their size: M6x6[0:2:4:6, 0:3:6] -> Array(2, 3, 3, 2)
+        ArrayType m6 = ArrayType.mat(n(6), n(6), I32);
+        ArrayType even = TypeRules.index(m6, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))),
+                Subscript.partition(List.of(lit(0), lit(3), lit(6)))));
+        assertEquals(ArrayType.of(I32, n(2), n(3), n(3), n(2)), even);
+        // a single column block drops the last dimension: a 3-dimensional array
+        ArrayType rowsOnly = TypeRules.index(m6, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(4), lit(6))), Subscript.all()));
+        assertEquals(ArrayType.of(I32, n(2), n(6), n(3)), rowsOnly);
+        // cut points: strictly increasing, within the size, non-negative integers
+        assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(2))), Subscript.all())));
+        assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(4))), Subscript.all())));
+        // assignment through a partition is not allowed
+        assertThrows(VelTypeException.class, () -> TypeRules.indexAssign(m, List.of(rows023, cols013), lit(0)));
+    }
+
+    @Test
+    void blockDestructuring() {
+        // [A, B; C, D] = M[0:2:3, 0:1:3]: 2x2 pattern over the block dimensions, each target a block
+        ArrayType m = ArrayType.mat(n(3), n(3), I32);
+        ArrayType t = TypeRules.index(m, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(3))),
+                Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
+        assertEquals(ArrayType.mat(TOP, TOP, I32), TypeRules.destructure(t, 2, 2));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructure(t, 3, 1));
+        // with the partition at hand each block gets its exact type:
+        // A = [1; 4] (2x1), B = [2, 3; 5, 6] (2x2), C = 7 (scalar), D = [8, 9] (1x2)
+        List<List<ArrayType>> exact = TypeRules.blocks(m, List.of(
+                Subscript.partition(List.of(lit(0), lit(2), lit(3))),
+                Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
+        assertEquals(ArrayType.vec(n(2), I32), exact.get(0).get(0));
+        assertEquals(ArrayType.mat(n(2), n(2), I32), exact.get(0).get(1));
+        assertTrue(exact.get(1).get(0).isScalar());
+        assertEquals(ArrayType.mat(n(1), n(2), I32), exact.get(1).get(1));
+        // (Top, Bottom) = M6[0:3:6, :]: tuple pattern over a 3-dimensional block tensor
+        ArrayType m6 = ArrayType.mat(n(6), n(4), F64);
+        ArrayType halves = TypeRules.index(m6, List.of(Subscript.partition(List.of(lit(0), lit(3), lit(6))), Subscript.all()));
+        assertEquals(ArrayType.mat(n(3), n(4), F64), TypeRules.destructure(halves, 2, 1));
     }
 
     // ---- @Dim -------------------------------------------------------------------------------------

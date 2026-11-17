@@ -106,8 +106,10 @@ patternItem
 //   .+ .-      aliases of + and - (which are already element-wise), for symmetry
 //   '          conjugate transpose (same as .' for real values)
 //   .'         transpose
-//   a:b        inclusive range of indices (lowest precedence: `a+1:b-1` == `(a+1):(b-1)`).
-//              There is no step form a:s:b, and a range cannot contain a range.
+//   a:b        range of indices [a, b), end-exclusive as in Python
+//              (lowest precedence: `a+1:b-1` == `(a+1):(b-1)`).
+//   a:b:c…     cut points of a partition, only as a subscript: m[0:2:3, 0:1:3] splits m into blocks
+//              [0,2)x[0,1), [0,2)x[1,3), [2,3)x[0,1), [2,3)x[1,3) (checked by StructureChecker)
 // Bool:
 //   o+         exclusive or (⊕), additive precedence; + is OR and * is AND on Bool
 // Integer-style division comes in two pairs; the number of symbols tells the rounding:
@@ -144,7 +146,7 @@ arguments
     : expr (',' expr)*
     ;
 
-/** MATLAB-style subscripts: an index, a range (`1:3`, `0:end`), or `:` for the whole dimension. */
+/** Subscripts: an index, a range (`1:3` = [1, 3)), cut points (`0:2:3`), or `:` for the whole dimension. */
 indexList
     : index (',' index)*
     ;
@@ -171,7 +173,7 @@ matrixRow
 // String literals used in parser rules (e.g. '+') resolve to these named tokens.
 //
 // Only Java keywords are reserved (`return`, `true`, `false`), so every Java identifier can be
-// referenced by name. `end` (inside subscripts) and `j` (imaginary unit) are predeclared names,
+// referenced by name. `end` (inside subscripts: the length of the dimension) and `j` (imaginary unit) are predeclared names,
 // lexed as ordinary identifiers and resolved by the semantic analysis. As in Kotlin, a name in
 // backticks (QUOTED_ID) bypasses the predeclared names: plain j is the imaginary unit, while
 // j wrapped in backticks is the Java variable named j.

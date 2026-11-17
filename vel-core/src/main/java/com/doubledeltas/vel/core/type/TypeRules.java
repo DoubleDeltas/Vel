@@ -121,9 +121,9 @@ public final class TypeRules {
     // ------------------------------------------------------------------------------------------
 
     /**
-     * Type of a range {@code start:end} (inclusive): a row vector of indices. Both bounds are cardinals
-     * (non-negative integer scalars; {@code end} for the last index). The length is known only when
-     * both bounds are integer literals; otherwise it is ⊤.
+     * Type of a range {@code start:end} = [start, end) (end-exclusive, as in Python): a row vector of
+     * indices. Both bounds are cardinals (non-negative integer scalars). The length is known only when
+     * both bounds are integer literals ({@code max(0, end - start)}); otherwise it is ⊤.
      */
     public static ArrayType range(ArrayType start, ArrayType end) {
         requireCard(start, "range bound");
@@ -132,15 +132,29 @@ public final class TypeRules {
         element = new ScalarType(element.field(), Promotion.defaultOf(element.resolution()));
         Card length = Card.TOP;
         if (start.element().resolution() instanceof IntLiteral s && end.element().resolution() instanceof IntLiteral e) {
-            BigInteger n = e.value().subtract(s.value()).add(BigInteger.ONE);
+            BigInteger n = e.value().subtract(s.value());
             length = Card.of(n.signum() > 0 ? n.longValueExact() : 0);
         }
         return ArrayType.mat(Card.ONE, length, element);
     }
 
-    /** Type of {@code a[s₁, …, sₖ]}. */
+    /**
+     * Type of {@code a[s₁, …, sₖ]}.
+     * <p>
+     * Without partitions it is the selected region. With a partition {@code a₀:…:aₖ} on a matrix it is
+     * the block tensor {@code Array(h, w, k, l)}: block {@code (i, j)} is {@code T[:, :, i, j]}, {@code k}
+     * and {@code l} are the numbers of row and column blocks, and {@code h}, {@code w} the block sizes
+     * (⊤ when the blocks differ in size; the missing positions of smaller blocks are null).
+     */
     public static ArrayType index(ArrayType a, List<Subscript> subscripts) {
-        return a.withDims(region(a, subscripts));
+        List<Selection> sel = selections(a, subscripts);
+        if (subscripts.stream().noneMatch(s -> s instanceof Subscript.Partition)) {
+            return a.withDims(sel.stream().map(Selection::size).toList());
+        }
+        if (sel.size() != 2) {
+            throw new VelTypeException("partitioned indexing is defined for matrices, not " + a);
+        }
+        return a.withDims(List.of(sel.get(0).size(), sel.get(1).size(), sel.get(0).blocks(), sel.get(1).blocks()));
     }
 
     /**
@@ -149,7 +163,10 @@ public final class TypeRules {
      * elements; when its resolution is larger, the whole array takes the larger resolution.
      */
     public static ArrayType indexAssign(ArrayType a, List<Subscript> subscripts, ArrayType value) {
-        List<Card> region = region(a, subscripts);
+        if (subscripts.stream().anyMatch(s -> s instanceof Subscript.Partition)) {
+            throw new VelTypeException("cannot assign to a partitioned index");
+        }
+        List<Card> region = selections(a, subscripts).stream().map(Selection::size).toList();
         int rank = Math.max(region.size(), value.rank());
         for (int i = 0; i < rank; i++) {
             Card v = i < value.rank() ? value.dims().get(i) : Card.ONE;
@@ -162,39 +179,104 @@ public final class TypeRules {
     }
 
     /**
-     * Destructuring assignment {@code [t₁₁, …; …] = value} with a pattern of {@code rows × cols}
-     * targets (a tuple pattern of k targets is k × 1). The value must have that shape (⊤ follows
-     * type-system.md 1.2); each target receives one element, so the result is the type of every target.
+     * Destructuring assignment {@code [t₁₁, …; …] = value} with a pattern of {@code rows × cols} items
+     * (a tuple pattern of k items is k × 1). Returns the type each target receives.
+     * <ul>
+     *   <li>A matrix value is split into elements: it must be {@code rows × cols}, each target gets a scalar.</li>
+     *   <li>A block tensor {@code Array(h, w, k, l)} (rank 3 or 4, see {@link #index}) is split into
+     *       blocks: {@code k × l} must be {@code rows × cols}, each target gets a {@code Mat(h, w)}.</li>
+     * </ul>
+     * ⊤ sizes follow type-system.md 1.2.
      */
     public static ArrayType destructure(ArrayType value, int rows, int cols) {
-        if (!value.isMatrix()) {
-            throw new VelTypeException("cannot destructure " + value + " into a " + rows + "x" + cols + " pattern");
-        }
         String what = "cannot destructure " + value + " into a " + rows + "x" + cols + " pattern:";
-        Shapes.unify(value.rows(), Card.of(rows), what);
-        Shapes.unify(value.cols(), Card.of(cols), what);
-        return ArrayType.scalar(value.element());
+        List<Card> d = value.dims();
+        if (value.isMatrix()) {
+            Shapes.unify(d.get(0), Card.of(rows), what);
+            Shapes.unify(d.get(1), Card.of(cols), what);
+            return ArrayType.scalar(value.element());
+        }
+        if (value.rank() <= 4) {
+            Shapes.unify(d.get(2), Card.of(rows), what);
+            Shapes.unify(value.rank() == 4 ? d.get(3) : Card.ONE, Card.of(cols), what);
+            return ArrayType.mat(d.get(0), d.get(1), value.element());
+        }
+        throw new VelTypeException(what + " rank " + value.rank() + " is too high");
     }
 
-    /** Sizes of the region selected by the subscripts. */
-    private static List<Card> region(ArrayType a, List<Subscript> subscripts) {
-        if (subscripts.size() == a.rank()) {
-            List<Card> dims = new ArrayList<>(a.rank());
-            for (int i = 0; i < a.rank(); i++) {
-                dims.add(select(a.dims().get(i), subscripts.get(i)));
+    /**
+     * Exact types of the blocks of {@code a[s₁, s₂]}, {@code blocks.get(i).get(j)} being block
+     * {@code (i, j)}. When the right-hand side of a block destructuring is written as a partitioned
+     * index, the targets get these types instead of the common (possibly ⊤) block size of the tensor:
+     * in {@code [A, B; C, D] = M[0:2:3, 0:1:3]}, {@code A} is 2x1 and {@code C} is a scalar.
+     */
+    public static List<List<ArrayType>> blocks(ArrayType a, List<Subscript> subscripts) {
+        index(a, subscripts); // validates
+        List<Selection> sel = selections(a, subscripts);
+        if (sel.size() != 2) {
+            throw new VelTypeException("partitioned indexing is defined for matrices, not " + a);
+        }
+        List<Card> rows = blockSizes(sel.get(0), rowsOrCols(a, subscripts, 0));
+        List<Card> cols = blockSizes(sel.get(1), rowsOrCols(a, subscripts, 1));
+        List<List<ArrayType>> result = new ArrayList<>();
+        for (Card r : rows) {
+            List<ArrayType> line = new ArrayList<>();
+            for (Card c : cols) {
+                line.add(ArrayType.mat(r, c, a.element()));
             }
-            return dims;
+            result.add(List.copyOf(line));
+        }
+        return List.copyOf(result);
+    }
+
+    /** The subscript applied to dimension {@code dim} of a matrix (a vector's single subscript applies to its long side). */
+    private static Subscript rowsOrCols(ArrayType a, List<Subscript> subscripts, int dim) {
+        if (subscripts.size() == 2) {
+            return subscripts.get(dim);
+        }
+        boolean column = a.cols().isOne();
+        return (dim == 0) == column ? subscripts.getFirst() : Subscript.all();
+    }
+
+    private static List<Card> blockSizes(Selection selection, Subscript subscript) {
+        if (!(subscript instanceof Subscript.Partition p)) {
+            return List.of(selection.size());
+        }
+        List<Card> sizes = new ArrayList<>();
+        for (int i = 1; i < p.cuts().size(); i++) {
+            if (p.cuts().get(i - 1).element().resolution() instanceof IntLiteral lo
+                    && p.cuts().get(i).element().resolution() instanceof IntLiteral hi) {
+                sizes.add(Card.of(hi.value().subtract(lo.value()).longValueExact()));
+            } else {
+                sizes.add(Card.TOP);
+            }
+        }
+        return sizes;
+    }
+
+    /** What a subscript selects along one dimension: the (block) size and the number of blocks. */
+    private record Selection(Card size, Card blocks) {
+        static final Selection ONE = new Selection(Card.ONE, Card.ONE);
+    }
+
+    private static List<Selection> selections(ArrayType a, List<Subscript> subscripts) {
+        if (subscripts.size() == a.rank()) {
+            List<Selection> result = new ArrayList<>(a.rank());
+            for (int i = 0; i < a.rank(); i++) {
+                result.add(select(a.dims().get(i), subscripts.get(i)));
+            }
+            return result;
         }
         if (subscripts.size() == 1 && a.isMatrix() && (a.rows().isOne() || a.cols().isOne())) {
             // a vector takes a single subscript along its long dimension and keeps its orientation
             boolean column = a.cols().isOne();
-            Card selected = select(column ? a.rows() : a.cols(), subscripts.getFirst());
-            return column ? List.of(selected, Card.ONE) : List.of(Card.ONE, selected);
+            Selection selected = select(column ? a.rows() : a.cols(), subscripts.getFirst());
+            return column ? List.of(selected, Selection.ONE) : List.of(Selection.ONE, selected);
         }
         throw new VelTypeException("expected " + a.rank() + " subscripts for " + a + ", got " + subscripts.size());
     }
 
-    private static Card select(Card size, Subscript subscript) {
+    private static Selection select(Card size, Subscript subscript) {
         return switch (subscript) {
             case Subscript.At at -> {
                 requireCard(at.index(), "index");
@@ -202,11 +284,40 @@ public final class TypeRules {
                         && size instanceof Card.Finite f && lit.value().compareTo(BigInteger.valueOf(f.size())) >= 0) {
                     throw new VelTypeException("index " + lit.value() + " out of bounds for size " + f.size());
                 }
-                yield Card.ONE;
+                yield Selection.ONE;
             }
-            case Subscript.Span span -> span.range().cols();
-            case Subscript.All ignored -> size;
+            case Subscript.Span span -> new Selection(span.range().cols(), Card.ONE);
+            case Subscript.All ignored -> new Selection(size, Card.ONE);
+            case Subscript.Partition p -> partition(size, p);
         };
+    }
+
+    /** Block size (⊤ unless all blocks are known and equal) and block count of a partition. */
+    private static Selection partition(Card size, Subscript.Partition p) {
+        List<BigInteger> cuts = new ArrayList<>();
+        for (ArrayType cut : p.cuts()) {
+            requireCard(cut, "cut point");
+            cuts.add(cut.element().resolution() instanceof IntLiteral lit ? lit.value() : null);
+        }
+        Card blocks = Card.of(cuts.size() - 1);
+        if (cuts.contains(null)) {
+            return new Selection(Card.TOP, blocks);
+        }
+        for (int i = 1; i < cuts.size(); i++) {
+            if (cuts.get(i).compareTo(cuts.get(i - 1)) <= 0) {
+                throw new VelTypeException("cut points must be strictly increasing: " + cuts);
+            }
+        }
+        if (size instanceof Card.Finite f && cuts.getLast().compareTo(BigInteger.valueOf(f.size())) > 0) {
+            throw new VelTypeException("last cut point " + cuts.getLast() + " exceeds size " + f.size());
+        }
+        BigInteger first = cuts.get(1).subtract(cuts.get(0));
+        for (int i = 2; i < cuts.size(); i++) {
+            if (!cuts.get(i).subtract(cuts.get(i - 1)).equals(first)) {
+                return new Selection(Card.TOP, blocks); // blocks of different sizes
+            }
+        }
+        return new Selection(Card.of(first.longValueExact()), blocks);
     }
 
     /** A cardinal: a non-negative integer scalar. */

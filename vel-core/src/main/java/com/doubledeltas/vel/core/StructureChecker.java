@@ -11,7 +11,8 @@ import com.doubledeltas.vel.parser.VelParser;
 /**
  * Structural rules that the grammar alone does not enforce. Runs only on trees without syntax errors.
  * <ul>
- *   <li>A range cannot contain a range: only {@code a:b} (no {@code a:s:b}, no {@code a:b:c:d}).</li>
+ *   <li>A chain of cut points {@code a:b:c…} (a partition) is allowed only as a subscript; elsewhere a
+ *       range is just {@code a:b}.</li>
  *   <li>A program that is a single expression returns that expression. Any other program must end
  *       with {@code return}, and {@code return} can only be the last statement.</li>
  * </ul>
@@ -79,10 +80,25 @@ final class StructureChecker extends VelBaseVisitor<Void> {
 
     @Override
     public Void visitRangeExpr(VelParser.RangeExprContext ctx) {
-        for (VelParser.ExprContext bound : ctx.expr()) {
-            if (bound instanceof VelParser.RangeExprContext) {
-                error(ctx.getStart(), "a range cannot contain a range (only a:b is allowed)");
-            }
+        // a:b:c parses left-associatively as (a:b):c; such a chain of cut points is a partition
+        if (ctx.expr(0) instanceof VelParser.RangeExprContext && !partitions.contains(ctx)) {
+            error(ctx.getStart(), "cut points a:b:c are only allowed as a subscript (m[a:b:c])");
+        }
+        if (ctx.expr(1) instanceof VelParser.RangeExprContext) {
+            error(ctx.getStart(), "a range cannot contain a range");
+        }
+        return visitChildren(ctx);
+    }
+
+    /** Ranges forming the cut-point chain of a subscript, which may be nested. */
+    private final java.util.Set<VelParser.RangeExprContext> partitions = new java.util.HashSet<>();
+
+    @Override
+    public Void visitExprIndex(VelParser.ExprIndexContext ctx) {
+        VelParser.ExprContext e = ctx.expr();
+        while (e instanceof VelParser.RangeExprContext range) {
+            partitions.add(range);
+            e = range.expr(0);
         }
         return visitChildren(ctx);
     }
