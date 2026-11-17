@@ -117,7 +117,7 @@ fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
 - `fun interface`의 유일한 추상 함수
 - 최상위 함수, `object`·`companion object`의 함수
 
-`T` 타입의 멤버 함수와 **확장 함수** `fun T.foo(bar: U): R`는 수신 객체를 첫 인자로 취급해 $T \times U \mapsto R$로 변환한다.
+`T` 타입의 멤버 함수와 **확장 함수** `fun T.foo(bar: U): R`는 수신 객체를 첫 인자로 취급해 $\mathrm{Func}(T \times U, R)$로 변환한다.
 
 호출 문법은 Kotlin을 따른다.
 - 멤버 함수, 확장 함수: `t.foo(x)`. `foo(t, x)` 형태로는 부를 수 없다.
@@ -160,6 +160,6 @@ Boolean 연산은 다음과 같이 대응한다.
 | `a and b` | `a * b` |
 | `a xor b` | `a o+ b` |
 
-`j`, `end`는 미리 선언된 변수이며 대입하면 새 값에 다시 묶인다(Java 매핑 4절). VEL 밖으로 나가는 값의 변환은 Java 매핑 5절과 같다.
+`j`, `end`는 미리 선언된 변수이며 대입하면 새 값에 다시 묶인다(Java 매핑 4절). VEL 밖으로 나가는 값의 변환은 Java 매핑 5절과 같고, 중간 계산의 해상도는 Java 매핑 7절(구체화 규칙)을 따른다.
 
 [^1]: `Char`는 Kotlin에서 수가 아니므로, `Char.code`의 값(UTF-16 코드 유닛)을 취급한다.
