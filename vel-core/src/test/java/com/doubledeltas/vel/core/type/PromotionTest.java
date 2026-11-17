@@ -148,6 +148,12 @@ class PromotionTest {
         assertEquals(FLOAT64, arithmetic(POW, INT32, lit(-1)));
         assertEquals(FLOAT64, arithmetic(POW, FLOAT32, FLOAT32));
         assertEquals(BIG_DECIMAL, arithmetic(POW, BIG_INT, INT32));
+        // any other exponent: A ⊔ B ⊔ F(64), so the exponent's resolution counts
+        assertEquals(decimalFloat(64), arithmetic(POW, INT32, decimalFloat(64)));
+        assertEquals(BIG_DECIMAL, arithmetic(POW, FLOAT64, BIG_DECIMAL));
+        assertEquals(BIG_DECIMAL, arithmetic(POW, INT32, BIG_INT));
+        assertEquals(FLOAT64, arithmetic(POW, FLOAT32, lit("0.5")));
+        assertEquals(FLOAT64, arithmetic(POW, lit(2), INT32));
     }
 
     @Test

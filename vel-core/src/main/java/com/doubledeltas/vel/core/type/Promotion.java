@@ -262,12 +262,16 @@ public final class Promotion {
         return widen(join(x, y));
     }
 
+    /**
+     * {@code A ^ B}: a non-negative integer literal exponent is repeated multiplication and keeps
+     * {@code A}; any other exponent can make the result fractional, so the result is
+     * {@code A ⊔ B ⊔ F(64)} (the exponent's resolution counts too, like any mixed operation).
+     */
     private static Resolution power(Resolution base, Resolution exponent) {
-        Resolution b = base.isLiteral() && !exponent.isLiteral() ? adopt(base, exponent) : defaultOf(base);
         if (exponent instanceof IntLiteral lit && lit.value().signum() >= 0) {
-            return widen(b); // repeated multiplication
+            return widen(defaultOf(base)); // repeated multiplication
         }
-        return join(b, Resolution.FLOAT64);
+        return join(join(base, exponent), Resolution.FLOAT64);
     }
 
     /** Result resolution of a unary {@code -a} or {@code +a}. A literal stays a literal. */
