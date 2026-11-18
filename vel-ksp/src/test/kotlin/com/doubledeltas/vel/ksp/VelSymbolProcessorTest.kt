@@ -127,6 +127,69 @@ class VelSymbolProcessorTest {
     }
 
     @Test
+    fun listsArraysAndComponentObjects() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.Vel
+            import com.doubledeltas.vel.Dim
+            data class Point(val x: Double, val y: Double)
+            data class Mixed(val a: Int, val b: Double)
+            interface Shapes {
+                @Vel("u + v")
+                fun add(u: List<Double>, v: List<Double>): List<Double>
+                @Vel("2 * a")
+                fun doubled(a: Array<Int>): Array<Int>
+                @Vel("m'")
+                fun transposed(m: List<List<Double>>): List<List<Double>>
+                @Vel("(-p[1], p[0])")
+                fun rotate(p: Point): Point
+                @Vel("q[0] + q[1]")
+                fun sum(q: Mixed): Double
+                @Vel("(p[1], p[0])")
+                fun swap(p: Pair<Double, Double>): Pair<Double, Double>
+                @Vel("t[0] * t[1] * t[2]")
+                fun product(t: Triple<Int, Int, Int>): Int
+                @Vel("2 * m")
+                fun scaled(@Dim(2, 2) m: Array<UIntArray>): Array<UIntArray>
+                @Vel("x * 2")
+                fun nullableList(x: List<Double>?): List<Double>
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val type = result.classLoader.loadClass("ShapesVel")
+        val shapes = type.getConstructor().newInstance()
+        fun call(name: String, vararg args: Any?): Any? {
+            val m = type.methods.single { it.name == name || it.name.startsWith("$name-") }
+            try {
+                return m.invoke(shapes, *args)
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                throw e.cause!!
+            }
+        }
+        assertEquals(listOf(5.0, 7.0), call("add", listOf(1.0, 2.0), listOf(4.0, 5.0)))
+        assertArrayEquals(arrayOf(2, 4), call("doubled", arrayOf(1, 2)) as Array<*>)
+        assertEquals(listOf(listOf(1.0, 3.0), listOf(2.0, 4.0)), call("transposed", listOf(listOf(1.0, 2.0), listOf(3.0, 4.0))))
+        val point = result.classLoader.loadClass("Point")
+        val make = point.getConstructor(Double::class.java, Double::class.java)
+        assertEquals(make.newInstance(-2.0, 1.0), call("rotate", make.newInstance(1.0, 2.0)))
+        val mixed = result.classLoader.loadClass("Mixed").getConstructor(Int::class.java, Double::class.java).newInstance(1, 0.5)
+        assertEquals(1.5, call("sum", mixed))
+        assertEquals(Pair(2.0, 1.0), call("swap", Pair(1.0, 2.0)))
+        assertEquals(24, call("product", Triple(2, 3, 4)))
+        // Array<UIntArray> is an array of boxed UIntArray objects on the JVM
+        val m = java.lang.reflect.Array.newInstance(UIntArray::class.java, 2) as Array<Any?>
+        m[0] = uintArrayOf(1u, 2u)
+        m[1] = uintArrayOf(3u, 4u)
+        @Suppress("UNCHECKED_CAST")
+        val scaled = call("scaled", m) as Array<UIntArray>
+        assertEquals(listOf(2u, 4u), scaled[0].toList())
+        assertEquals(listOf(6u, 8u), scaled[1].toList())
+        assertEquals(listOf(2.0), call("nullableList", listOf(1.0)))
+        assertThrows(NullPointerException::class.java) { call("nullableList", null) }
+    }
+
+    @Test
     fun unsupportedTypeIsReported() {
         val result = compile(
             """

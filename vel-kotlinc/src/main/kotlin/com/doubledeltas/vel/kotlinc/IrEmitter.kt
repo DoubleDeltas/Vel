@@ -1,6 +1,13 @@
 package com.doubledeltas.vel.kotlinc
 
 import com.doubledeltas.vel.core.codegen.Code
+import com.doubledeltas.vel.core.codegen.Boundary
+import com.doubledeltas.vel.core.codegen.ConcreteType
+import com.doubledeltas.vel.core.type.Card
+import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.classifierOrNull
+import org.jetbrains.kotlin.ir.types.isMarkedNullable
+import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
@@ -80,18 +87,31 @@ internal class IrEmitter(
     private val builder = DeclarationIrBuilder(plugin, function.symbol, start, end)
     private val locals = HashMap(values)
 
+    /** A Kotlin value converted at the boundary ([Boundary]) into the local [local] the generated code reads. */
+    class Read(val boundary: Boundary, val declaration: IrValueDeclaration, val local: String)
+
+    /** The result built at the boundary into the declared Kotlin [type]. */
+    class Write(val boundary: Boundary, val type: IrType)
+
     /**
      * The expression computing an inline VEL expression: its statements end with one Return (or Throw).
-     * With [toUShort], a `Char` result (`Z+16`) is returned as the `UShort` the context expects.
+     * The [reads] convert the variables first; with [write] (or [toUShort], a `Char` result as `UShort`)
+     * the result is built into the type the context expects.
      */
-    fun emit(body: Code.Body, toUShort: Boolean = false): IrExpression {
+    fun emit(body: Code.Body, toUShort: Boolean = false, reads: List<Read> = emptyList(), write: Write? = null): IrExpression {
         val last = body.statements().last()
-        val resultType = if (last is Code.Return) irType(last.value().type()) else builtIns.nothingType
-        val type = if (toUShort && last is Code.Return) irType(Code.Type.scalar("ushort")) else resultType
+        val type = when {
+            last !is Code.Return -> builtIns.nothingType
+            write != null -> write.type
+            toUShort -> irType(Code.Type.scalar("ushort"))
+            else -> irType(last.value().type())
+        }
         val block = builder.irBlock(resultType = type) {
-            if (toUShort && last is Code.Return) {
+            for (r in reads) readInto(r)
+            if (last is Code.Return && (toUShort || write != null)) {
                 statements(body.statements().dropLast(1))
-                +charToUShort(expr(last.value()))
+                val value = expr(last.value())
+                +(if (write != null) writeOut(write, value, irType(last.value().type())) else charToUShort(value))
             } else {
                 statements(body.statements())
             }
@@ -354,8 +374,26 @@ internal class IrEmitter(
                 .single { it.owner.parameters.size == 1 && it.owner.parameters[0].type.classFqName == FqName("kotlin.Int") }
             return irCallConstructor(constructor, emptyList()).apply { arguments[0] = expr(lengths.first()) }
         }
+        if (type.isUnsigned) {
+            // Array<UIntArray> holds boxed UIntArray objects: VelMath.newArrayLike(prototype, n), then each element
+            val arrayType = irType(type)
+            val component = type.component()
+            return irBlock(resultType = arrayType) {
+                val n = irTemporary(expr(lengths.first()), "n", builtIns.intType)
+                val prototype = newArray(component, List(component.rank()) { Code.Lit(Code.Type.INT, BigInteger.ZERO) })
+                val created = irCall(staticFunction(VEL_MATH, "newArrayLike", 2)).apply {
+                    arguments[0] = prototype
+                    arguments[1] = irGet(n)
+                }
+                val array = irTemporary(irAs(created, arrayType), "array", arrayType)
+                loop(irGet(n)) { i ->
+                    +member(type, "set", irGet(array), irGet(i), newArray(component, lengths.subList(1, lengths.size)),
+                        resultType = builtIns.unitType)
+                }
+                +irGet(array)
+            }
+        }
         // arrays of arrays: VelMath.newArray(descriptor, lengths...) cast to the array type
-        if (type.isUnsigned) error("VEL: arrays of unsigned arrays are not supported by the Kotlin IR backend yet")
         val descriptor = when (type.primitive()) {
             "double" -> 'D'; "float" -> 'F'; "long" -> 'J'; "int" -> 'I'
             "short" -> 'S'; "byte" -> 'B'; "char" -> 'C'; else -> 'Z'
@@ -405,7 +443,7 @@ internal class IrEmitter(
 
     private fun irType(t: Code.Type): IrType {
         if (t.isUnsigned || t.primitive() == "ushort") {
-            if (t.rank() > 1) error("VEL: arrays of unsigned arrays are not supported by the Kotlin IR backend yet")
+            if (t.rank() > 1) return builtIns.arrayClass.typeWith(irType(t.component()))
             val name = kotlinName(t.primitive()) + if (t.rank() == 1) "Array" else ""
             return finder.findClass(ClassId(FqName("kotlin"), Name.identifier(name)))!!.defaultType
         }
@@ -446,6 +484,288 @@ internal class IrEmitter(
         "float" -> "Float"
         "double" -> "Double"
         else -> error("VEL: unexpected primitive $primitive")
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Boundary conversions: lists, arrays of boxed values, component objects (Boundary)
+    // ------------------------------------------------------------------------------------------
+
+    /** `for (i in 0 until n) body(i)`, the index visible to generated code as a local. */
+    private fun IrStatementsBuilder<*>.loop(n: IrExpression, body: IrStatementsBuilder<*>.(IrValueDeclaration) -> Unit) {
+        val count = irTemporary(n, "n", builtIns.intType)
+        val i = irTemporary(irInt(0), "i", builtIns.intType, isMutable = true)
+        val loop = IrWhileLoopImpl(start, end, builtIns.unitType, null)
+        loop.condition = compare(builtIns.lessFunByOperandType, builtIns.intType, irGet(i), irGet(count))
+        loop.body = irBlock(resultType = builtIns.unitType) {
+            body(i)
+            +irSet(i, member(Code.Type.INT, "plus", irGet(i), irInt(1)))
+        }
+        +loop
+    }
+
+    private var counter = 0
+
+    /** Makes [value] visible to generated code under a fresh name. */
+    private fun bind(value: IrValueDeclaration, type: Code.Type): Code.Ref {
+        val name = "b__" + counter++
+        locals[name] = value
+        return Code.Ref(name, type)
+    }
+
+    private fun codeType(t: ConcreteType) = Code.Type(JavaTypes.javaName(t.element().resolution()), t.javaRank())
+
+    private fun IrStatementsBuilder<*>.readInto(r: Read) {
+        val b = r.boundary
+        val t = codeType(b.type())
+        val sourceType = r.declaration.type.makeNotNull()
+        val value: IrExpression = irGet(r.declaration)
+        val source = irTemporary(if (r.declaration.type.isMarkedNullable()) notNull(value) else value, r.local + "__src", sourceType)
+        if (t.rank() == 0) {
+            locals[r.local] = irTemporary(scalarOf(b, irGet(source), t.primitive()), r.local, irType(t))
+            return
+        }
+        val rank = b.dims().size
+        val lengths = (0 until rank).map { k -> bind(irTemporary(length(b, source, sourceType, k), "n", builtIns.intType), Code.Type.INT) }
+        locals[r.local] = irTemporary(expr(Code.NewArray(t, (t.rank() - 1 downTo 0).map { lengths[it] })), r.local, irType(t))
+        val idx = Array<Code.Expr>(maxOf(rank, 2)) { Code.Lit(Code.Type.INT, BigInteger.ZERO) }
+        fill(b, source, sourceType, 0, idx, Code.Ref(r.local, t), t)
+    }
+
+    /** A scalar Kotlin value (nullable in a [Boundary.Boxed]) as the primitive [element]. */
+    private fun IrBuilderWithScope.scalarOf(b: Boundary, value: IrExpression, element: String): IrExpression {
+        val from = if (b is Boundary.Boxed) b.primitive() else JavaTypes.javaName(b.element().resolution())
+        return convert(if (b is Boundary.Boxed) notNull(value) else value, from, element)
+    }
+
+    private fun IrBuilderWithScope.notNull(value: IrExpression): IrExpression =
+        irCall(builtIns.checkNotNullSymbol, value.type.makeNotNull()).apply {
+            typeArguments[0] = value.type.makeNotNull()
+            arguments[0] = value
+        }
+
+    /** Copies the elements of [source] (a Kotlin value of [b]) into [target] at VEL dimensions [offset]…. */
+    private fun IrStatementsBuilder<*>.fill(
+        b: Boundary, source: IrValueDeclaration, sourceType: IrType, offset: Int, idx: Array<Code.Expr>,
+        target: Code.Ref, t: Code.Type,
+    ) {
+        when (b) {
+            is Boundary.Boxed -> +storeAt(target, t, idx, scalarOf(b, irGet(source), t.primitive()))
+            is Boundary.Direct -> {
+                val p = JavaTypes.javaName(b.element().resolution())
+                if (b.rank() == 0) {
+                    +storeAt(target, t, idx, convert(irGet(source), p, t.primitive()))
+                    return
+                }
+                val array = bind(source, Code.Type(p, b.rank()))
+                fun level(k: Int) {
+                    if (k < 0) {
+                        var e: Code.Expr = array
+                        for (j in b.rank() - 1 downTo 0) e = Code.Get(e, idx[offset + j], e.type().component())
+                        +storeAt(target, t, idx, convert(expr(e), p, t.primitive()))
+                        return
+                    }
+                    var e: Code.Expr = array
+                    repeat(b.rank() - 1 - k) { e = Code.Get(e, Code.Lit(Code.Type.INT, BigInteger.ZERO), e.type().component()) }
+                    val n = (b.dims()[k] as? Card.Finite)?.let { irInt(it.size().toInt()) } ?: expr(Code.Length(e))
+                    loop(n) { i ->
+                        idx[offset + k] = bind(i, Code.Type.INT)
+                        level(k - 1)
+                    }
+                }
+                level(b.rank() - 1)
+            }
+            is Boundary.Sequence -> {
+                val elementType = argument(sourceType, 0)
+                loop(size(b, irGet(source), sourceType)) { i ->
+                    idx[offset + b.of().dims().size] = bind(i, Code.Type.INT)
+                    val e = irTemporary(element(b, irGet(source), sourceType, irGet(i)), "e", elementType)
+                    fill(b.of(), e, elementType, offset, idx, target, t)
+                }
+            }
+            is Boundary.Components -> for (n in b.parts().indices) {
+                idx[offset] = Code.Lit(Code.Type.INT, BigInteger.valueOf(n.toLong()))
+                val (call, partType) = component(irGet(source), sourceType, n + 1)
+                fill(b.parts()[n].boundary(), irTemporary(call, "c", partType), partType, offset + 1, idx, target, t)
+            }
+        }
+    }
+
+    /** The length of VEL dimension [k] of a Kotlin value of [b]. */
+    private fun IrStatementsBuilder<*>.length(b: Boundary, source: IrValueDeclaration, sourceType: IrType, k: Int): IrExpression =
+        when (b) {
+            is Boundary.Direct -> (b.dims()[k] as? Card.Finite)?.let { irInt(it.size().toInt()) } ?: run {
+                var e: Code.Expr = bind(source, Code.Type(JavaTypes.javaName(b.element().resolution()), b.rank()))
+                repeat(b.rank() - 1 - k) { e = Code.Get(e, Code.Lit(Code.Type.INT, BigInteger.ZERO), e.type().component()) }
+                expr(Code.Length(e))
+            }
+            is Boundary.Boxed -> irInt(1)
+            is Boundary.Sequence -> {
+                val inner = b.of().dims().size
+                if (k == inner) (b.length() as? Card.Finite)?.let { irInt(it.size().toInt()) } ?: size(b, irGet(source), sourceType)
+                else {
+                    val elementType = argument(sourceType, 0)
+                    irIfThenElse(builtIns.intType, irEquals(size(b, irGet(source), sourceType), irInt(0)), irInt(0),
+                        irBlock(resultType = builtIns.intType) {
+                            val e = irTemporary(element(b, irGet(source), sourceType, irInt(0)), "e", elementType)
+                            +length(b.of(), e, elementType, k)
+                        })
+                }
+            }
+            is Boundary.Components -> if (k == 0) irInt(b.parts().size) else {
+                val (call, partType) = component(irGet(source), sourceType, 1)
+                irBlock(resultType = builtIns.intType) {
+                    +length(b.parts().first().boundary(), irTemporary(call, "c", partType), partType, k - 1)
+                }
+            }
+        }
+
+    private fun IrBuilderWithScope.size(s: Boundary.Sequence, source: IrExpression, sourceType: IrType): IrExpression {
+        val owner = if (s.kind() == Boundary.Sequence.Kind.LIST) ClassId(FqName("kotlin.collections"), Name.identifier("Collection"))
+        else ClassId(FqName("kotlin"), Name.identifier("Array"))
+        val getter = finder.findProperties(CallableId(owner, Name.identifier("size"))).single().owner.getter!!.symbol
+        return irCall(getter, builtIns.intType).apply { arguments[0] = source }
+    }
+
+    private fun IrBuilderWithScope.element(s: Boundary.Sequence, source: IrExpression, sourceType: IrType, i: IrExpression): IrExpression {
+        val owner = if (s.kind() == Boundary.Sequence.Kind.LIST) ClassId(FqName("kotlin.collections"), Name.identifier("List"))
+        else ClassId(FqName("kotlin"), Name.identifier("Array"))
+        val get = finder.findFunctions(CallableId(owner, Name.identifier("get"))).first { it.owner.parameters.size == 2 }
+        return irCall(get, argument(sourceType, 0)).apply {
+            arguments[0] = source
+            arguments[1] = i
+        }
+    }
+
+    /** `source.componentN()` with its type (type parameters of the class substituted). */
+    private fun IrBuilderWithScope.component(source: IrExpression, sourceType: IrType, n: Int): kotlin.Pair<IrExpression, IrType> {
+        val cls = sourceType.classOrNull!!.owner
+        val f = cls.declarations.filterIsInstance<IrSimpleFunction>()
+            .first { it.name.asString() == "component$n" && it.parameters.size == 1 }
+        val type = substitute(f.returnType, cls, sourceType)
+        return irCall(f.symbol, type).apply { arguments[0] = source } to type
+    }
+
+    private fun componentType(type: IrType, n: Int): IrType {
+        val cls = type.classOrNull!!.owner
+        val f = cls.declarations.filterIsInstance<IrSimpleFunction>()
+            .first { it.name.asString() == "component$n" && it.parameters.size == 1 }
+        return substitute(f.returnType, cls, type)
+    }
+
+    private fun substitute(type: IrType, cls: org.jetbrains.kotlin.ir.declarations.IrClass, actual: IrType): IrType {
+        val parameter = type.classifierOrNull as? org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol ?: return type
+        val index = cls.typeParameters.indexOfFirst { it.symbol == parameter }
+        return if (index < 0) type else argument(actual, index)
+    }
+
+    private fun argument(type: IrType, index: Int): IrType =
+        (type as IrSimpleType).arguments[index].typeOrNull ?: error("VEL: no type argument in $type")
+
+    /** `target[idx…] = value`. */
+    private fun IrBuilderWithScope.storeAt(target: Code.Ref, t: Code.Type, idx: Array<Code.Expr>, value: IrExpression): IrExpression {
+        var e: Code.Expr = target
+        for (k in t.rank() - 1 downTo 1) e = Code.Get(e, idx[k], e.type().component())
+        return member(e.type(), "set", expr(e), expr(idx[0]), value, resultType = builtIns.unitType)
+    }
+
+    /** The result [value] (of the generated type [valueType]) built into the declared type. */
+    private fun IrStatementsBuilder<*>.writeOut(w: Write, value: IrExpression, valueType: IrType): IrExpression {
+        val t = codeType(w.boundary.type())
+        val v = bind(irTemporary(value, "result", valueType), t)
+        val idx = Array<Code.Expr>(maxOf(w.boundary.dims().size, 2)) { Code.Lit(Code.Type.INT, BigInteger.ZERO) }
+        return build(w.boundary, v, t, 0, idx, w.type.makeNotNull())
+    }
+
+    private fun IrStatementsBuilder<*>.build(
+        b: Boundary, v: Code.Ref, t: Code.Type, offset: Int, idx: Array<Code.Expr>, declared: IrType,
+    ): IrExpression {
+        fun at(): IrExpression {
+            var e: Code.Expr = v
+            for (k in t.rank() - 1 downTo 0) e = Code.Get(e, idx[k], e.type().component())
+            return expr(e)
+        }
+        fun lengthOfValue(k: Int): IrExpression {
+            if (k >= t.rank()) return irInt(1)
+            var e: Code.Expr = v
+            repeat(t.rank() - 1 - k) { e = Code.Get(e, Code.Lit(Code.Type.INT, BigInteger.ZERO), e.type().component()) }
+            return expr(Code.Length(e))
+        }
+        return when (b) {
+            is Boundary.Boxed -> convert(at(), t.primitive(), b.primitive())
+            is Boundary.Direct -> {
+                val p = JavaTypes.javaName(b.element().resolution())
+                if (b.rank() == 0) return convert(at(), t.primitive(), p)
+                val type = Code.Type(p, b.rank())
+                val lengths = (0 until b.rank()).map { k -> bind(irTemporary(lengthOfValue(offset + k), "n", builtIns.intType), Code.Type.INT) }
+                val result = bind(irTemporary(expr(Code.NewArray(type, (b.rank() - 1 downTo 0).map { lengths[it] })), "a", irType(type)), type)
+                fun level(k: Int) {
+                    if (k < 0) {
+                        +storeAt(result, type, idx.copyOfRange(offset, offset + b.rank()), convert(at(), t.primitive(), p))
+                        return
+                    }
+                    loop(expr(lengths[k])) { i ->
+                        idx[offset + k] = bind(i, Code.Type.INT)
+                        level(k - 1)
+                    }
+                }
+                level(b.rank() - 1)
+                expr(result)
+            }
+            is Boundary.Sequence -> {
+                val elementType = argument(declared, 0)
+                val n = irTemporary(lengthOfValue(offset + b.of().dims().size), "n", builtIns.intType)
+                val target: IrValueDeclaration
+                if (b.kind() == Boundary.Sequence.Kind.LIST) {
+                    val list = finder.findClass(ClassId(FqName("java.util"), Name.identifier("ArrayList")))!!
+                    val constructor = list.owner.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrConstructor>()
+                        .first { it.parameters.size == 1 && it.parameters[0].type.classFqName == FqName("kotlin.Int") }
+                    target = irTemporary(irCallConstructor(constructor.symbol, listOf(elementType)).apply { arguments[0] = irGet(n) },
+                        "list", list.typeWith(elementType))
+                } else {
+                    val created = if (b.of() is Boundary.Direct && (b.of() as Boundary.Direct).rank() == 0)
+                        irCall(staticFunction(VEL_MATH, "newBoxedArray", 2)).apply {
+                            arguments[0] = IrConstImpl.char(start, end, builtIns.charType, descriptor(JavaTypes.javaName(b.of().element().resolution())))
+                            arguments[1] = irGet(n)
+                        }
+                    else error("VEL: arrays of ${b.of()} are not supported by the Kotlin IR backend yet")
+                    target = irTemporary(irAs(created, declared), "array", declared)
+                }
+                loop(irGet(n)) { i ->
+                    idx[offset + b.of().dims().size] = bind(i, Code.Type.INT)
+                    val e = build(b.of(), v, t, offset, idx, elementType)
+                    if (b.kind() == Boundary.Sequence.Kind.LIST) {
+                        val add = finder.findClass(ClassId(FqName("java.util"), Name.identifier("ArrayList")))!!.owner.declarations
+                            .filterIsInstance<IrSimpleFunction>().first { it.name.asString() == "add" && it.parameters.size == 2 }
+                        +irCall(add.symbol, builtIns.booleanType).apply {
+                            arguments[0] = irGet(target)
+                            arguments[1] = e
+                        }
+                    } else {
+                        +member(Code.Type("int", 2), "set", irGet(target), irGet(i), e, resultType = builtIns.unitType)
+                    }
+                }
+                irGet(target)
+            }
+            is Boundary.Components -> {
+                val cls = declared.classOrNull!!.owner
+                val constructor = cls.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrConstructor>()
+                    .first { it.parameters.size == b.parts().size }
+                val typeArguments = (declared as IrSimpleType).arguments.map { it.typeOrNull!! }
+                val args = b.parts().indices.map { n ->
+                    idx[offset] = Code.Lit(Code.Type.INT, BigInteger.valueOf(n.toLong()))
+                    val partType = componentType(declared, n + 1)
+                    irTemporary(build(b.parts()[n].boundary(), v, t, offset + 1, idx, partType), "p", partType)
+                }
+                irCallConstructor(constructor.symbol, typeArguments).apply {
+                    args.forEachIndexed { n, a -> arguments[n] = irGet(a) }
+                }
+            }
+        }
+    }
+
+    private fun descriptor(primitive: String) = when (primitive) {
+        "double" -> 'D'; "float" -> 'F'; "long" -> 'J'; "int" -> 'I'
+        "short" -> 'S'; "byte" -> 'B'; "char" -> 'C'; else -> 'Z'
     }
 
     companion object {

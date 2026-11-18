@@ -42,10 +42,32 @@ public final class KotlinPrinter {
 
     private final StringBuilder out = new StringBuilder();
     private final java.util.function.UnaryOperator<String> returned;
+    private java.util.function.UnaryOperator<String> resultBlock;
     private int indent;
 
     private KotlinPrinter(java.util.function.UnaryOperator<String> returned) {
         this.returned = returned;
+    }
+
+    /**
+     * A function body (without braces) starting with {@code prologue} (statements converting the
+     * parameters, see {@link KotlinBoundary}); when given, {@code resultBlock} turns the result
+     * expression into statements that return the declared type.
+     */
+    public static String functionBody(Body body, String prologue, java.util.function.UnaryOperator<String> returned,
+                                      java.util.function.UnaryOperator<String> resultBlock) {
+        KotlinPrinter p = new KotlinPrinter(returned);
+        p.resultBlock = resultBlock;
+        p.lines(prologue);
+        return p.out + functionBodyOf(p, body);
+    }
+
+    private void lines(String block) {
+        for (String l : block.split("\n")) {
+            if (!l.isEmpty()) {
+                line(l);
+            }
+        }
     }
 
     /** A function body (without braces): the result is returned. */
@@ -58,7 +80,12 @@ public final class KotlinPrinter {
      * declared return type (e.g. {@code Char} to {@code UShort}).
      */
     public static String functionBody(Body body, java.util.function.UnaryOperator<String> returned) {
-        KotlinPrinter p = new KotlinPrinter(returned);
+        return functionBodyOf(new KotlinPrinter(returned), body);
+    }
+
+    private static String functionBodyOf(KotlinPrinter q, Body body) {
+        KotlinPrinter p = new KotlinPrinter(q.returned);
+        p.resultBlock = q.resultBlock;
         if (!body.guarded()) {
             p.statements(body.statements());
         } else {
@@ -134,7 +161,13 @@ public final class KotlinPrinter {
                     block(i.otherwise());
                 }
             }
-            case Return r -> line("return " + returned.apply(expr(r.value())));
+            case Return r -> {
+                if (resultBlock != null) {
+                    lines(resultBlock.apply(expr(r.value())));
+                } else {
+                    line("return " + returned.apply(expr(r.value())));
+                }
+            }
             case Throw ignored -> line("throw " + VEL_EXCEPTION + "()");
         }
     }
@@ -194,7 +227,7 @@ public final class KotlinPrinter {
     }
 
     /** A primitive conversion with Java cast semantics, through {@code Int} where Kotlin has no direct one. */
-    private static String convert(String code, String from, String to) {
+    static String convert(String code, String from, String to) {
         if (from.equals(to)) {
             return code;
         }

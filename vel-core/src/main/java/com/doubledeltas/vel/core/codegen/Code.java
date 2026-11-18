@@ -199,7 +199,9 @@ public final class Code {
      * @param guarded whether out-of-range indices and negative lengths can occur; the statements must
      *                then run inside a handler that reports them as {@code NullPointerException}
      *                ({@code VelMath.outOfRange}, java.md 2.2)
+     * @param used    the variables of the target language the code reads, by their VEL names (only these
+     *                need converting at the boundary)
      */
-    public record Body(List<Stmt> statements, boolean guarded) {
+    public record Body(List<Stmt> statements, boolean guarded, java.util.Set<String> used) {
     }
 }

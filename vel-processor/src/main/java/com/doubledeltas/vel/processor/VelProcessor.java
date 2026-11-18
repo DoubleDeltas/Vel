@@ -30,7 +30,8 @@ import javax.tools.Diagnostic;
 
 import com.doubledeltas.vel.core.VelDiagnostic;
 import com.doubledeltas.vel.core.VelFrontend;
-import com.doubledeltas.vel.core.codegen.ConcreteType;
+import com.doubledeltas.vel.core.codegen.Boundary;
+import com.doubledeltas.vel.core.codegen.ModelBoundaries;
 import com.doubledeltas.vel.core.codegen.JavaCodeGenerator;
 import com.doubledeltas.vel.core.codegen.JavaTypes;
 import com.doubledeltas.vel.core.codegen.VelCompileError;
@@ -44,8 +45,9 @@ import com.doubledeltas.vel.core.type.VelTypeException;
  * generates {@code <Owner>Vel}, a class implementing every {@code @Vel} method of the owner.
  * <p>
  * For an interface the class implements it; for an abstract class it extends it. When the owner has
- * other abstract methods, the generated class is abstract too. Supported Java types for now: the
- * primitives and arrays of them, with {@code @Dim}.
+ * other abstract methods, the generated class is abstract too. Supported Java types: primitives and
+ * their arrays, wrappers, {@code List}s and arrays of those, records and classes with
+ * {@code componentN()} (java.md 1, 2), sized by {@code @Dim}.
  */
 @SupportedAnnotationTypes(VelProcessor.VEL_ANNOTATION)
 public final class VelProcessor extends AbstractProcessor {
@@ -117,18 +119,19 @@ public final class VelProcessor extends AbstractProcessor {
             return null;
         }
 
-        Map<String, ConcreteType> params = new LinkedHashMap<>();
+        Map<String, Boundary> params = new LinkedHashMap<>();
+        ModelBoundaries boundaries = new ModelBoundaries(processingEnv.getTypeUtils());
         StringBuilder signature = new StringBuilder();
         try {
             for (VariableElement p : method.getParameters()) {
-                ConcreteType type = concreteType(p.asType(), p);
+                Boundary type = boundaries.of(p.asType(), p);
                 params.put(p.getSimpleName().toString(), type);
                 if (!signature.isEmpty()) {
                     signature.append(", ");
                 }
-                signature.append(type.javaName()).append(' ').append(p.getSimpleName());
+                signature.append(p.asType()).append(' ').append(p.getSimpleName());
             }
-            ConcreteType returnType = concreteType(method.getReturnType(), method);
+            Boundary returnType = boundaries.of(method.getReturnType(), method);
             String body = JavaCodeGenerator.methodBody(result.tree(), params, returnType);
 
             StringBuilder code = new StringBuilder();
@@ -141,7 +144,7 @@ public final class VelProcessor extends AbstractProcessor {
             if (owner.getKind() == ElementKind.INTERFACE) {
                 code.append("public ");
             }
-            code.append(returnType.javaName()).append(' ').append(method.getSimpleName())
+            code.append(method.getReturnType()).append(' ').append(method.getSimpleName())
                     .append('(').append(signature).append(") {\n");
             for (String line : body.split("\n")) {
                 code.append(line.isEmpty() ? "" : "        " + line).append('\n');
@@ -156,45 +159,6 @@ public final class VelProcessor extends AbstractProcessor {
             messager.printMessage(Diagnostic.Kind.ERROR, "VEL: " + e.getMessage(), method, mirror);
             return null;
         }
-    }
-
-    /** The VEL type of a Java type (java.md 1.1, 2): primitives and arrays of them, sized by {@code @Dim}. */
-    private ConcreteType concreteType(TypeMirror type, Element annotated) {
-        int rank = 0;
-        TypeMirror element = type;
-        while (element.getKind() == TypeKind.ARRAY) {
-            element = ((ArrayType) element).getComponentType();
-            rank++;
-        }
-        ScalarType scalar = element.getKind().isPrimitive() ? JavaTypes.ofPrimitive(element.toString()) : null;
-        if (scalar == null) {
-            throw new VelTypeException("the Java type " + type + " is not supported by VEL yet");
-        }
-        AnnotationMirror dim = findOptionalMirror(annotated, DIM_ANNOTATION);
-        if (rank == 0) {
-            if (dim != null) {
-                throw new VelTypeException("@Dim on the scalar type " + type);
-            }
-            return ConcreteType.scalar(scalar);
-        }
-        List<Card> dims = null;
-        if (dim != null) {
-            dims = DimSpec.fromAnnotation(ints(dim, "value"), ints(dim, "java"), ints(dim, "vel"));
-        }
-        return ConcreteType.javaArray(scalar, rank, dims);
-    }
-
-    private static int[] ints(AnnotationMirror mirror, String name) {
-        for (var e : mirror.getElementValues().entrySet()) {
-            if (e.getKey().getSimpleName().contentEquals(name)) {
-                Object v = e.getValue().getValue();
-                if (v instanceof List<?> list) {
-                    return list.stream().mapToInt(x -> (Integer) ((AnnotationValue) x).getValue()).toArray();
-                }
-                return new int[] {(Integer) v};
-            }
-        }
-        return new int[0];
     }
 
     private void writeClass(TypeElement owner, List<String> methods) {

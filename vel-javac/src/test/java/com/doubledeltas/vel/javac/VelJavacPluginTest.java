@@ -2,6 +2,7 @@ package com.doubledeltas.vel.javac;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.InvocationTargetException;
@@ -79,6 +80,49 @@ class VelJavacPluginTest {
         assertEquals(32.0, call("Kinematics", "dot", new double[] {1, 2, 3}, new double[] {4, 5, 6}));
         assertEquals(30, call("Kinematics", "last", (Object) new int[] {10, 20, 30}));
         assertEquals(6.0, call("Kinematics", "inLambda", 3.0));
+    }
+
+    @Test
+    void wrappersListsAndRecords() throws Exception {
+        String source = """
+                import static com.doubledeltas.vel.VelInline.vel;
+                import java.util.List;
+                public class Boxes {
+                    public record Point(double x, double y) {}
+                    public static Double twice(Double x) {
+                        return vel("x * 2");
+                    }
+                    public static List<Double> add(List<Double> u, List<Double> v) {
+                        List<Double> w = vel("u + v");
+                        return w;
+                    }
+                    public static Point rotate(Point p) {
+                        return vel("(-p[1], p[0])");
+                    }
+                    public static double norm(Point p) {
+                        return vel("p' * p");
+                    }
+                    public static Integer[] doubled(Integer[] a) {
+                        return vel("2 * a");
+                    }
+                    public static double first(List<Double> unused, double[] v) {
+                        return vel("v[0]");   // only the used variables are converted
+                    }
+                }
+                """;
+        assertNoErrors(compile(source));
+        assertEquals(6.0, call("Boxes", "twice", 3.0));
+        assertEquals(List.of(5.0, 7.0), call("Boxes", "add", List.of(1.0, 2.0), List.of(4.0, 5.0)));
+        try (var loader = new URLClassLoader(new java.net.URL[] {out.toUri().toURL()}, getClass().getClassLoader())) {
+            Class<?> point = loader.loadClass("Boxes$Point");
+            var make = point.getConstructor(double.class, double.class);
+            Class<?> boxes = loader.loadClass("Boxes");
+            assertEquals(make.newInstance(-2.0, 1.0), boxes.getMethod("rotate", point).invoke(null, make.newInstance(1.0, 2.0)));
+            assertEquals(25.0, boxes.getMethod("norm", point).invoke(null, make.newInstance(3.0, 4.0)));
+        }
+        assertArrayEquals(new Integer[] {2, 4}, (Integer[]) call("Boxes", "doubled", (Object) new Integer[] {1, 2}));
+        assertEquals(7.0, call("Boxes", "first", null, new double[] {7}));
+        assertThrows(NullPointerException.class, () -> call("Boxes", "twice", (Object) null));
     }
 
     @Test

@@ -117,17 +117,20 @@ public final class CodeGenerator {
     private boolean guarded;
     private final Set<String> names = new HashSet<>();
     private final Map<String, Val> params = new LinkedHashMap<>();
+    private final Set<String> used = new java.util.LinkedHashSet<>();
     private final Map<String, Val> locals = new HashMap<>();
     private final Deque<Expr> ends = new ArrayDeque<>();
     /** The type the result is concretized to; null to keep the value's own type. */
     private final ConcreteType returnType;
 
-    private CodeGenerator(Map<String, ConcreteType> parameters, ConcreteType returnType) {
+    private CodeGenerator(Map<String, ConcreteType> parameters, Map<String, String> codeNames, ConcreteType returnType) {
         this.returnType = returnType;
         parameters.forEach((name, type) -> {
+            String code = codeNames.getOrDefault(name, name);
             names.add(name);
+            names.add(code);
             Type t = new Type(JavaTypes.javaName(type.element().resolution()), type.javaRank());
-            params.put(name, new Val(type.algebra(), type.element().resolution(), new Ref(name, t), true));
+            params.put(name, new Val(type.algebra(), type.element().resolution(), new Ref(code, t), true));
         });
     }
 
@@ -140,9 +143,18 @@ public final class CodeGenerator {
      */
     public static Body program(VelParser.ProgramContext program, Map<String, ConcreteType> parameters,
                                ConcreteType returnType) {
-        CodeGenerator g = new CodeGenerator(parameters, returnType);
+        return program(program, parameters, Map.of(), returnType);
+    }
+
+    /**
+     * Like {@link #program(VelParser.ProgramContext, Map, ConcreteType)}, where a parameter is read from
+     * the local named {@code codeNames.get(name)} (a value converted at the boundary) when given.
+     */
+    public static Body program(VelParser.ProgramContext program, Map<String, ConcreteType> parameters,
+                               Map<String, String> codeNames, ConcreteType returnType) {
+        CodeGenerator g = new CodeGenerator(parameters, codeNames, returnType);
         g.program(program);
-        return new Body(List.copyOf(g.out), g.guarded);
+        return new Body(List.copyOf(g.out), g.guarded, Set.copyOf(g.used));
     }
 
     /**
@@ -154,12 +166,18 @@ public final class CodeGenerator {
      */
     public static Body expression(VelParser.SingleExpressionContext expression, Map<String, ConcreteType> variables,
                                   ConcreteType target) {
-        CodeGenerator g = new CodeGenerator(variables, target);
+        return expression(expression, variables, Map.of(), target);
+    }
+
+    /** Like {@link #expression(VelParser.SingleExpressionContext, Map, ConcreteType)} with converted locals (see {@link #program}). */
+    public static Body expression(VelParser.SingleExpressionContext expression, Map<String, ConcreteType> variables,
+                                  Map<String, String> codeNames, ConcreteType target) {
+        CodeGenerator g = new CodeGenerator(variables, codeNames, target);
         g.located(expression.expr(), () -> {
             g.returnValue(g.expr(expression.expr()));
             return null;
         });
-        return new Body(List.copyOf(g.out), g.guarded);
+        return new Body(List.copyOf(g.out), g.guarded, Set.copyOf(g.used));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -227,6 +245,10 @@ public final class CodeGenerator {
             return;
         }
         checkShape(v.alg().dims(), returnType.dims(), "cannot return " + v.alg() + " as " + returnType + ":");
+        if (!v.isScalar() && JavaTypes.javaRank(v.alg().dims()) != returnType.javaRank()) {
+            throw new VelTypeException("cannot return " + v.alg() + " as " + returnType
+                    + ": the orientation differs (a row and a column?); transpose it with '");
+        }
         Val array = v.isScalar() ? broadcastTo(v, returnType.dims()) : v;
         out.add(new Return(arrayCode(array, target.resolution(), true)));
     }
@@ -423,6 +445,7 @@ public final class CodeGenerator {
         if (v == null) {
             throw new VelTypeException("unknown name: " + name);
         }
+        used.add(name);
         return v;
     }
 

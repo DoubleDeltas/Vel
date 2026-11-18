@@ -123,6 +123,60 @@ class VelCompilerPluginTest {
     }
 
     @Test
+    fun listsArraysAndComponentObjects() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.VelInline.vel
+            import com.doubledeltas.vel.Dim
+
+            data class Point(val x: Double, val y: Double)
+            data class Mixed(val a: Int, val b: Double)
+
+            object Shapes {
+                @JvmStatic fun add(u: List<Double>, v: List<Double>): List<Double> = vel("u + v")
+                @JvmStatic fun doubled(a: Array<Int>): Array<Int> = vel("2 * a")
+                @JvmStatic fun transposed(m: List<List<Double>>): List<List<Double>> = vel("m'")
+                @JvmStatic fun rotate(p: Point): Point = vel("(-p[1], p[0])")
+                @JvmStatic fun sum(q: Mixed): Double = vel("q[0] + q[1]")
+                @JvmStatic fun swap(p: Pair<Double, Double>): Pair<Double, Double> = vel("(p[1], p[0])")
+                @JvmStatic fun product(t: Triple<Int, Int, Int>): Int = vel("t[0] * t[1] * t[2]")
+                @JvmStatic fun scaled(@Dim(2, 2) m: Array<UIntArray>): Array<UIntArray> = vel("2 * m")
+                @JvmStatic fun nullableList(x: List<Double>?): List<Double> = vel("x * 2")
+                @JvmStatic fun first(unused: List<Double>, v: DoubleArray): Double = vel("v[0]")
+
+                @JvmStatic fun checkScaled(): Boolean {
+                    val r = scaled(arrayOf(uintArrayOf(1u, 2u), uintArrayOf(3u, 4u)))
+                    return r[0].contentEquals(uintArrayOf(2u, 4u)) && r[1].contentEquals(uintArrayOf(6u, 8u))
+                }
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val shapes = result.classLoader.loadClass("Shapes")
+        fun call(name: String, vararg args: Any?): Any? {
+            val m = shapes.methods.single { it.name == name }
+            try {
+                return m.invoke(null, *args)
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                throw e.cause!!
+            }
+        }
+        assertEquals(listOf(5.0, 7.0), call("add", listOf(1.0, 2.0), listOf(4.0, 5.0)))
+        assertArrayEquals(arrayOf(2, 4), call("doubled", arrayOf(1, 2)) as Array<*>)
+        assertEquals(listOf(listOf(1.0, 3.0), listOf(2.0, 4.0)), call("transposed", listOf(listOf(1.0, 2.0), listOf(3.0, 4.0))))
+        val make = result.classLoader.loadClass("Point").getConstructor(Double::class.java, Double::class.java)
+        assertEquals(make.newInstance(-2.0, 1.0), call("rotate", make.newInstance(1.0, 2.0)))
+        val mixed = result.classLoader.loadClass("Mixed").getConstructor(Int::class.java, Double::class.java).newInstance(1, 0.5)
+        assertEquals(1.5, call("sum", mixed))
+        assertEquals(Pair(2.0, 1.0), call("swap", Pair(1.0, 2.0)))
+        assertEquals(24, call("product", Triple(2, 3, 4)))
+        assertEquals(true, call("checkScaled"))
+        assertEquals(listOf(2.0), call("nullableList", listOf(1.0)))
+        assertThrows(NullPointerException::class.java) { call("nullableList", null) }
+        assertEquals(7.0, call("first", listOf<Double>(), doubleArrayOf(7.0)))
+    }
+
+    @Test
     fun typeErrorIsReportedAtLiteral() {
         val result = compile(
             """

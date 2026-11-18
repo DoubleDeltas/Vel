@@ -8,13 +8,13 @@ dependencies {
 // The vel(...) rewriter is compiled against jdk.compiler internals. At run time the plugin exports
 // them to itself (JavacInternals), so users need no extra flags.
 tasks.named('compileJava') {
-    options.compilerArgs += ['api', 'code', 'parser', 'tree', 'util'].collectMany {
+    options.compilerArgs += ['api', 'code', 'comp', 'model', 'parser', 'tree', 'util'].collectMany {
         ['--add-exports', "jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()]
     }
 }
 
 tasks.named('javadoc') {
-    options.addMultilineStringsOption('-add-exports').value = ['api', 'code', 'parser', 'tree', 'util'].collect {
+    options.addMultilineStringsOption('-add-exports').value = ['api', 'code', 'comp', 'model', 'parser', 'tree', 'util'].collect {
         "jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()
     }
 }

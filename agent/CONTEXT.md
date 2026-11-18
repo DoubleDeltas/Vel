@@ -232,6 +232,16 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - 테스트: `VelSymbolProcessorTest`(생성 Kotlin을 컴파일·실행), `VelCompilerPluginTest`(인라인 IR을 컴파일·실행), `vel-examples-kotlin`의 `PhysicsTest`(Gradle에서 KSP + 플러그인).
 - **nullable과 부호 없는 정수 (결정됨 2026-11-18)**: `T?`는 `T`와 같은 대수(kotlin.md 1.3). KSP는 함수 첫머리에서 `val x: T = x as T`(null이면 NPE, 안쪽 nullable 배열은 unchecked cast로 원소 접근 시 NPE), 시그니처는 선언 타입 그대로(`render`). IR은 읽을 때 `checkNotNull`. 부호 없는 정수는 kotlin.md 1.2대로 지원: `Code`에 `ubyte uint ulong`(비트 저장, `JavaTypes.storage`), `Z+16`은 `char`. 산술은 비트 그대로 순환, 나눗셈·나머지·비교·변환은 부호 없이(Java: `Integer.divideUnsigned` 등, `VelMath.unsignedToDouble`; Kotlin 소스: `UInt` 연산자 그대로; IR: `UInt` 멤버와 `kotlin.toUInt()` 등 확장 함수, 비교는 `compareTo`). `UShort`는 경계에서 `Char`와 변환(KSP 첫머리·반환, IR `Adapter.USHORT`). 미지원: `UShortArray`, 부호 없는 배열의 `Array`.
 
+### 경계 변환(Boundary) 구현 메모 (2026-11-18)
+- 생성기(`CodeGenerator`)는 JVM 원시 타입·배열만 다루고, 그 밖의 값은 **경계에서 변환**한다. `Boundary`(vel-core): `Direct`(원시·원시 배열), `Boxed`(래퍼, Kotlin 중첩 nullable 스칼라), `Sequence`(LIST / ARRAY, 원소 인덱스가 마지막 VEL 차원), `Components`(record·`componentN()`, 성분 인덱스가 첫 VEL 차원, 대수 ∨·해상도 ⊔). `Boundary.withDims`로 `@Dim` 적용.
+- 생성기는 경계 변수를 `name__v` 지역으로 읽고(`codeNames`), 실제로 쓴 변수만 `Body.used`에 남긴다 → 쓴 변수만 변환.
+- 백엔드별: `JavaBoundary`(Java 소스, `JavaPrinter`의 prologue와 `ResultWriter`), `KotlinBoundary`(Kotlin 소스, `KotlinPrinter.functionBody(body, prologue, returned, resultBlock)`), `IrEmitter`의 `Read`/`Write`(IR: `Collection.size`, `List.get`, `componentN()`(클래스 타입 매개변수 치환), `java.util.ArrayList(Int)`+`add`, 생성자, `VelMath.newBoxedArray`).
+- 타입 → Boundary: Java `@Vel`은 `ModelBoundaries`(javax.lang.model; record `@Dim`은 접근자에서 읽음). javac 플러그인은 원시 타입이 아니면 타입 트리 사본을 클래스 환경에서 `Attr.attribType`(진단은 버림)한 뒤 `ModelBoundaries`. KSP·IR은 각자 Kotlin 타입에서 만든다(`Array<원시 배열>`은 Direct, `Array<그 밖>`은 Sequence).
+- `Array<UIntArray>`(IR): `VelMath.newArrayLike(prototype, n)`(값 클래스 배열은 JVM에서 박싱된 객체 배열). Kotlin 소스는 `Array(n) { UIntArray(m) }`.
+- 반환 방향이 행/열로 다르면(`Mat(1, ⊤)`를 `double[]`로) 컴파일 오류: 전치하라고 안내.
+- KSP 테스트: kctfork가 KSP 2.3.12 구현을 끌어와 API 2.3.14와 어긋나 속성 방문 중 `NoSuchMethodError` → 테스트 의존성에 `symbol-processing`, `-common-deps`, `-aa-embeddable` 2.3.14를 명시.
+- 아직: `UShortArray`, 인라인 IR에서 스칼라가 아닌 원소의 `Array` 결과, Kotlin 인라인에서 속성 참조.
+
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
 - 리터럴과 상수 접기 결과는 스칼라 `ArrayAlgebra`의 `constant`(`Constant.Int`/`Decimal`/`Rational`, 소수는 끝의 0을 정리한 정규형)로 들고 다닌다. 상수 접기는 `Constant.fold`(VEL 의미론). 리터럴 인덱스, 범위 길이, `^` 규칙이 이 값을 본다. 단항 `-`는 상수를 상수로 유지한다(`x * -1`이 `x`를 따르게).

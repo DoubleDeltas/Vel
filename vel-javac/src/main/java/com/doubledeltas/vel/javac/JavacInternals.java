@@ -17,6 +17,8 @@ final class JavacInternals {
     private static final String[] PACKAGES = {
             "com.sun.tools.javac.api",
             "com.sun.tools.javac.code",
+            "com.sun.tools.javac.comp",
+            "com.sun.tools.javac.model",
             "com.sun.tools.javac.parser",
             "com.sun.tools.javac.tree",
             "com.sun.tools.javac.util",

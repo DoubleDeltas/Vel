@@ -109,6 +109,33 @@ public final class VelMath {
         return java.lang.reflect.Array.newInstance(element, lengths);
     }
 
+    /**
+     * A new array of the wrappers of the primitive with the given JVM descriptor (see
+     * {@link #newArray}), e.g. {@code Double[]} for Kotlin {@code Array<Double>}.
+     */
+    public static Object[] newBoxedArray(char primitive, int length) {
+        Class<?> element = switch (primitive) {
+            case 'D' -> Double.class;
+            case 'F' -> Float.class;
+            case 'J' -> Long.class;
+            case 'I' -> Integer.class;
+            case 'S' -> Short.class;
+            case 'B' -> Byte.class;
+            case 'C' -> Character.class;
+            case 'Z' -> Boolean.class;
+            default -> throw new IllegalArgumentException("not a primitive descriptor: " + primitive);
+        };
+        return (Object[]) java.lang.reflect.Array.newInstance(element, length);
+    }
+
+    /**
+     * A new array whose elements have the class of {@code prototype}, e.g. Kotlin {@code Array<UIntArray>}
+     * (an array of boxed {@code UIntArray} objects).
+     */
+    public static Object[] newArrayLike(Object prototype, int length) {
+        return (Object[]) java.lang.reflect.Array.newInstance(prototype.getClass(), length);
+    }
+
     // ---- error() ------------------------------------------------------------------------------------
 
     /**

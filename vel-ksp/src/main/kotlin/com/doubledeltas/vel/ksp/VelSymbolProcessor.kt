@@ -2,7 +2,9 @@ package com.doubledeltas.vel.ksp
 
 import com.doubledeltas.vel.core.VelDiagnostic
 import com.doubledeltas.vel.core.VelFrontend
+import com.doubledeltas.vel.core.codegen.Boundary
 import com.doubledeltas.vel.core.codegen.CodeGenerator
+import com.doubledeltas.vel.core.codegen.KotlinBoundary
 import com.doubledeltas.vel.core.codegen.ConcreteType
 import com.doubledeltas.vel.core.codegen.JavaTypes
 import com.doubledeltas.vel.core.codegen.KotlinPrinter
@@ -102,31 +104,41 @@ class VelSymbolProcessor(
         if (parsed.hasErrors()) return null
 
         return try {
-            val params = LinkedHashMap<String, ConcreteType>()
+            val boundaries = LinkedHashMap<String, Boundary>()
+            val declared = HashMap<String, KSType>()
             val signature = StringBuilder()
-            val prologue = StringBuilder()
             for (p in function.parameters) {
                 val name = p.name!!.asString()
-                val type = concreteType(p.type, p.annotations)
-                params[name] = type
-                val declared = render(p.type.resolve())
+                val type = p.type.resolve()
+                boundaries[name] = boundary(type, p.annotations)
+                declared[name] = type
                 if (signature.isNotEmpty()) signature.append(", ")
-                signature.append(name).append(": ").append(declared)
-                // adapt the declared type to the generated one: T? to T (null throws), UShort to Char
-                val used = KotlinPrinter.type(codeType(type))
-                if (declared != used) {
-                    val value = if (declared.removeSuffix("?") == "kotlin.UShort") "($name as kotlin.UShort).toInt().toChar()"
-                    else "$name as $used"
-                    prologue.append("val ").append(name).append(": ").append(used).append(" = ").append(value).append('\n')
-                }
+                signature.append(name).append(": ").append(render(type))
             }
             val returnRef = function.returnType ?: throw VelTypeException("a @Vel function must declare its return type")
-            val returnType = concreteType(returnRef, function.annotations)
+            val result = boundary(returnRef.resolve(), function.annotations)
             val declaredReturn = render(returnRef.resolve())
+
+            // a parameter that is not used as it is gets converted into the local name__v
+            val types = LinkedHashMap<String, ConcreteType>()
+            val codeNames = HashMap<String, String>()
+            for ((name, b) in boundaries) {
+                types[name] = b.type()
+                if (!b.isDirect || render(declared.getValue(name)).replace("kotlin.", "") != KotlinPrinter.type(codeType(b.type()))) {
+                    codeNames[name] = name + "__v"
+                }
+            }
+            val code = CodeGenerator.program(parsed.tree(), types, codeNames, result.type())
+            val prologue = StringBuilder()
+            for (name in code.used()) {
+                val local = codeNames[name] ?: continue
+                prologue.append(read(boundaries.getValue(name), declared.getValue(name), name, local))
+            }
             val returned: (String) -> String =
                 if (declaredReturn.removeSuffix("?") == "kotlin.UShort") { v -> "($v).code.toUShort()" } else { v -> v }
-            val body = prologue.toString() +
-                KotlinPrinter.functionBody(CodeGenerator.program(parsed.tree(), params, returnType), returned)
+            val resultBlock: ((String) -> String)? =
+                if (result.isDirect) null else { v -> KotlinBoundary.write(result, v, "result") }
+            val body = KotlinPrinter.functionBody(code, prologue.toString(), returned, resultBlock)
 
             val visibility = when {
                 Modifier.PROTECTED in function.modifiers -> "protected "
@@ -134,7 +146,7 @@ class VelSymbolProcessor(
                 else -> ""
             }
             buildString {
-                if (prologue.isNotEmpty()) append("    @Suppress(\"NAME_SHADOWING\", \"UNCHECKED_CAST\")\n")
+                append("    @Suppress(\"UNCHECKED_CAST\")\n")
                 append("    ").append(visibility).append("override fun ").append(function.simpleName.asString())
                 append('(').append(signature).append("): ").append(declaredReturn).append(" {\n")
                 for (line in body.lines()) {
@@ -153,33 +165,70 @@ class VelSymbolProcessor(
         }
     }
 
-    /** The VEL type of a Kotlin type (kotlin.md 1, 2): primitives and their arrays, sized by `@Dim`. */
-    private fun concreteType(ref: KSTypeReference, annotations: Sequence<KSAnnotation>): ConcreteType {
-        var type: KSType = ref.resolve()
-        var rank = 0
-        while (true) {
-            // T? is the same VEL type as T (kotlin.md 1.3)
-            val name = type.declaration.qualifiedName?.asString()
-            if (name == "kotlin.Array") {
-                type = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
-                rank++
-                continue
-            }
-            val primitive = PRIMITIVES[name]
-            val array = PRIMITIVE_ARRAYS[name]
-            val scalar = primitive ?: array
-                ?: throw VelTypeException("the Kotlin type ${ref.resolve()} is not supported by VEL yet")
-            if (array != null) rank++
-            val dim = annotations.firstOrNull { it.isAnnotation(DIM_ANNOTATION) }
-            if (rank == 0) {
-                if (dim != null) throw VelTypeException("@Dim on the scalar type ${ref.resolve()}")
-                return ConcreteType.scalar(scalar)
-            }
-            val dims: List<Card>? = dim?.let {
-                DimSpec.fromAnnotation(it.ints("value"), it.ints("java"), it.ints("vel"))
-            }
-            return ConcreteType.javaArray(scalar, rank, dims)
+    /** Statements declaring [local], the value of the parameter [name] converted for the generated code. */
+    private fun read(b: Boundary, declared: KSType, name: String, local: String): String {
+        val used = KotlinPrinter.type(codeType(b.type()))
+        if (b.isDirect) {
+            // T? to T (null throws), nested nullable arrays (unchecked), UShort to the Char holding Z+16
+            val value = if (declared.declaration.qualifiedName?.asString() == "kotlin.UShort") "($name as kotlin.UShort).toInt().toChar()"
+            else "$name as $used"
+            return "val $local: $used = $value\n"
         }
+        return KotlinBoundary.read(b, if (declared.isMarkedNullable) "$name!!" else name, local)
+    }
+
+    /**
+     * The boundary of a Kotlin type (kotlin.md 1–3), sized by `@Dim`: primitives, unsigned integers and
+     * their arrays as they are; nullable primitives unboxed (`T?` is the same VEL type as `T`); `List`s
+     * and `Array`s of other values as sequences; `Pair`, `Triple` and data classes (`componentN()`) as
+     * component objects.
+     */
+    private fun boundary(type: KSType, annotations: Sequence<KSAnnotation>): Boundary {
+        val b = boundaryOf(type)
+        val dim = annotations.firstOrNull { it.isAnnotation(DIM_ANNOTATION) }
+        if (dim != null && b is Boundary.Direct && b.rank() == 0) throw VelTypeException("@Dim on the scalar type $type")
+        val dims: List<Card>? = dim?.let { DimSpec.fromAnnotation(it.ints("value"), it.ints("java"), it.ints("vel")) }
+        return Boundary.withDims(b, dims)
+    }
+
+    private fun boundaryOf(type: KSType): Boundary {
+        val name = type.declaration.qualifiedName?.asString()
+            ?: throw VelTypeException("the Kotlin type $type is not supported by VEL yet")
+        PRIMITIVES[name]?.let { scalar ->
+            return if (type.isMarkedNullable) Boundary.Boxed(scalar, JavaTypes.javaName(scalar.resolution()))
+            else Boundary.Direct(listOf(), scalar)
+        }
+        PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it) }
+        if (name == "kotlin.Array") {
+            val element = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
+            val inner = boundaryOf(element)
+            // Array<DoubleArray> is a primitive array of rank 2; Array<Double> holds boxed values
+            if (inner is Boundary.Direct && inner.rank() > 0) { // nullable rows are cast (null throws when read)
+                return Boundary.Direct(inner.dims() + Card.TOP, inner.element())
+            }
+            return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, render(type.makeNotNullable()))
+        }
+        if (name in LISTS) {
+            val element = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
+            return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element), Card.TOP, render(type.makeNotNullable()))
+        }
+        val declaration = type.declaration as? KSClassDeclaration
+        if (declaration != null) {
+            val parts = ArrayList<Boundary.Part>()
+            val functions = declaration.getAllFunctions().toList()
+            var n = 1
+            while (true) {
+                val f = functions.firstOrNull { it.simpleName.asString() == "component$n" && it.parameters.isEmpty() } ?: break
+                val returnType = f.asMemberOf(type.makeNotNullable()).returnType
+                    ?: throw VelTypeException("component$n of $type has no type")
+                parts.add(Boundary.Part("component$n()", boundaryOf(returnType)))
+                n++
+            }
+            if (parts.isNotEmpty()) {
+                return Boundary.Components(render(type.makeNotNullable()), parts)
+            }
+        }
+        throw VelTypeException("the Kotlin type $type is not supported by VEL yet")
     }
 
     private fun KSAnnotation.ints(name: String): IntArray =
@@ -254,6 +303,9 @@ class VelSymbolProcessor(
             "kotlin.UByte" to unsigned(8), "kotlin.UShort" to unsigned(16), "kotlin.UInt" to unsigned(32),
             "kotlin.ULong" to unsigned(64),
         )
+
+        private val LISTS = setOf("kotlin.collections.List", "kotlin.collections.MutableList", "java.util.ArrayList",
+            "kotlin.collections.ArrayList")
 
         /** Kotlin arrays of scalars. `UShortArray` is not supported: `Z+16` is held in `Char`. */
         private val PRIMITIVE_ARRAYS = mapOf(

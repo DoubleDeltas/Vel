@@ -2,6 +2,7 @@ package com.doubledeltas.vel.kotlinc
 
 import com.doubledeltas.vel.core.VelDiagnostic
 import com.doubledeltas.vel.core.VelFrontend
+import com.doubledeltas.vel.core.codegen.Boundary
 import com.doubledeltas.vel.core.codegen.CodeGenerator
 import com.doubledeltas.vel.core.codegen.ConcreteType
 import com.doubledeltas.vel.core.codegen.JavaTypes
@@ -32,6 +33,8 @@ import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classFqName
+import org.jetbrains.kotlin.ir.types.classOrNull
+import org.jetbrains.kotlin.ir.types.classifierOrNull
 import org.jetbrains.kotlin.ir.types.isMarkedNullable
 import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.callableId
@@ -60,10 +63,10 @@ class VelIrGenerationExtension : IrGenerationExtension {
     }
 
     /** A visible Kotlin value, its VEL type (null when VEL cannot use it) and how it is read. */
-    private class Binding(val declaration: IrValueDeclaration, val type: ConcreteType?, val adapter: IrEmitter.Adapter?)
+    private class Binding(val declaration: IrValueDeclaration, val type: Boundary?, val adapter: IrEmitter.Adapter?)
 
     private object Bindings {
-        fun of(declaration: IrValueDeclaration, type: ConcreteType?): Binding {
+        fun of(declaration: IrValueDeclaration, type: Boundary?): Binding {
         val t = declaration.type
         val ushort = t.classFqName?.asString() == "kotlin.UShort"
         val adapter = when {
@@ -89,7 +92,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
         override fun visitFunction(declaration: IrFunction): IrStatement {
             val params = HashMap<String, Binding>()
             for (p in declaration.parameters) {
-                if (!p.name.isSpecial) params[p.name.asString()] = Bindings.of(p, concreteType(p.type, p.annotations))
+                if (!p.name.isSpecial) params[p.name.asString()] = Bindings.of(p, boundary(p.type, p.annotations))
             }
             scopes.addLast(params)
             functions.addLast(declaration)
@@ -123,7 +126,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
             val result = super.visitVariable(declaration)
             if (!declaration.name.isSpecial) {
                 scopes.lastOrNull()?.put(declaration.name.asString(),
-                    Bindings.of(declaration, concreteType(declaration.type, declaration.annotations)))
+                    Bindings.of(declaration, boundary(declaration.type, declaration.annotations)))
             }
             return result
         }
@@ -156,18 +159,24 @@ class VelIrGenerationExtension : IrGenerationExtension {
             val visible = HashMap<String, Binding>()
             for (scope in scopes) visible.putAll(scope) // outer first, inner wins
             val variables = LinkedHashMap<String, ConcreteType>()
+            val codeNames = HashMap<String, String>()
             val values = HashMap<String, IrValueDeclaration>()
             val adapters = HashMap<String, IrEmitter.Adapter>()
             for ((name, binding) in visible) {
-                val type = binding.type ?: continue
-                variables[name] = type
+                val b = binding.type ?: continue
+                variables[name] = b.type()
                 values[name] = binding.declaration
-                binding.adapter?.let { adapters[name] = it }
+                if (b.isDirect) binding.adapter?.let { adapters[name] = it } else codeNames[name] = name + "__v"
             }
             return try {
-                val body = CodeGenerator.expression(parsed.tree(), variables, concreteType(call.type, emptyList()))
+                val target = boundary(call.type, emptyList())
+                val body = CodeGenerator.expression(parsed.tree(), variables, codeNames, target?.type())
+                val reads = body.used().filter { it in codeNames }.map {
+                    IrEmitter.Read(visible.getValue(it).type!!, visible.getValue(it).declaration, codeNames.getValue(it))
+                }
+                val write = if (target != null && !target.isDirect) IrEmitter.Write(target, call.type) else null
                 IrEmitter(context, file, function, call.startOffset, call.endOffset, values, adapters)
-                    .emit(body, toUShort = call.type.classFqName?.asString() == "kotlin.UShort")
+                    .emit(body, toUShort = call.type.classFqName?.asString() == "kotlin.UShort", reads = reads, write = write)
             } catch (e: VelCompileError) {
                 report(arg, VelDiagnostic.error(e.line(), e.column(), e.message).format())
                 null
@@ -182,39 +191,60 @@ class VelIrGenerationExtension : IrGenerationExtension {
         }
 
         /**
-         * The VEL type of a Kotlin type (kotlin.md 1, 2): primitives, unsigned integers and their arrays,
-         * sized by `@Dim`; null when VEL cannot use it. `T?` is the same VEL type as `T` (kotlin.md 1.3).
+         * The boundary of a Kotlin type (kotlin.md 1–3), sized by `@Dim`; null when VEL cannot use it.
+         * Primitives, unsigned integers and their arrays are used as they are (a nullable one is checked
+         * where it is read); `List`s and `Array`s of other values are sequences; `Pair`, `Triple` and data
+         * classes are component objects.
          */
-        private fun concreteType(type: IrType, annotations: List<IrConstructorCall>): ConcreteType? {
-            var t = type
-            var rank = 0
-            while (true) {
-                val name = t.classFqName?.asString() ?: return null
-                if (name == "kotlin.Array") {
-                    t = (t as? IrSimpleType)?.arguments?.singleOrNull()?.typeOrNull ?: return null
-                    rank++
-                    continue
-                }
-                val primitive = PRIMITIVES[name]
-                val array = PRIMITIVE_ARRAYS[name]
-                val scalar = primitive ?: array ?: return null
-                if (array != null) rank++
-                if (rank == 0) return ConcreteType.scalar(scalar)
-                val dim = annotations.firstOrNull { it.type.classFqName?.asString() == DIM_ANNOTATION }
-                val dims: List<Card>? = dim?.let {
-                    try {
-                        DimSpec.fromAnnotation(it.ints("value"), it.ints("java"), it.ints("vel"))
-                    } catch (e: VelTypeException) {
-                        report(it, "VEL: ${e.message}")
-                        null
-                    }
-                }
-                return try {
-                    ConcreteType.javaArray(scalar, rank, dims)
-                } catch (e: IllegalArgumentException) {
-                    null
-                }
+        private fun boundary(type: IrType, annotations: List<IrConstructorCall>): Boundary? {
+            val b = try {
+                boundaryOf(type, nested = false)
+            } catch (e: VelTypeException) {
+                null
+            } ?: return null
+            val dim = annotations.firstOrNull { it.type.classFqName?.asString() == DIM_ANNOTATION } ?: return b
+            return try {
+                Boundary.withDims(b, DimSpec.fromAnnotation(dim.ints("value"), dim.ints("java"), dim.ints("vel")))
+            } catch (e: VelTypeException) {
+                report(dim, "VEL: ${e.message}")
+                null
             }
+        }
+
+        private fun boundaryOf(type: IrType, nested: Boolean): Boundary? {
+            val name = type.classFqName?.asString() ?: return null
+            PRIMITIVES[name]?.let { scalar ->
+                return if (nested && type.isMarkedNullable()) Boundary.Boxed(scalar, JavaTypes.javaName(scalar.resolution()))
+                else Boundary.Direct(listOf(), scalar)
+            }
+            PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it) }
+            val arguments = (type as? IrSimpleType)?.arguments ?: emptyList()
+            if (name == "kotlin.Array") {
+                val element = arguments.singleOrNull()?.typeOrNull ?: return null
+                val inner = boundaryOf(element, nested = true) ?: return null
+                if (inner is Boundary.Direct && inner.rank() > 0) return Boundary.Direct(inner.dims() + Card.TOP, inner.element())
+                return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, name)
+            }
+            if (name in LISTS) {
+                val element = arguments.singleOrNull()?.typeOrNull ?: return null
+                return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element, nested = true) ?: return null, Card.TOP, name)
+            }
+            val cls = type.classOrNull?.owner ?: return null
+            val functions = cls.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrSimpleFunction>()
+            val parts = ArrayList<Boundary.Part>()
+            var n = 1
+            while (true) {
+                val f = functions.firstOrNull { it.name.asString() == "component$n" && it.parameters.size == 1 } ?: break
+                var partType = f.returnType
+                val parameter = partType.classifierOrNull as? org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
+                if (parameter != null) {
+                    val index = cls.typeParameters.indexOfFirst { it.symbol == parameter }
+                    partType = arguments.getOrNull(index)?.typeOrNull ?: return null
+                }
+                parts.add(Boundary.Part("component$n()", boundaryOf(partType, nested = true) ?: return null))
+                n++
+            }
+            return if (parts.isEmpty()) null else Boundary.Components(name, parts)
         }
 
         private fun IrConstructorCall.ints(name: String): IntArray {
@@ -248,6 +278,8 @@ class VelIrGenerationExtension : IrGenerationExtension {
             "kotlin.UByte" to unsigned(8), "kotlin.UShort" to unsigned(16), "kotlin.UInt" to unsigned(32),
             "kotlin.ULong" to unsigned(64),
         )
+
+        private val LISTS = setOf("kotlin.collections.List", "kotlin.collections.MutableList", "java.util.ArrayList")
 
         /** Kotlin arrays of scalars. `UShortArray` is not supported: `Z+16` is held in `Char`. */
         private val PRIMITIVE_ARRAYS = mapOf(

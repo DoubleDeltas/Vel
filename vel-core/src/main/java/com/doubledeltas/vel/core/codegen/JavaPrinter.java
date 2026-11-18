@@ -35,17 +35,34 @@ public final class JavaPrinter {
     static final String VEL_MATH = "com.doubledeltas.vel.VelMath";
     static final String VEL_EXCEPTION = "com.doubledeltas.vel.VelException";
 
+    /** Turns the result into the declared type: statements ending with {@code keyword} (return / yield) of it. */
+    @FunctionalInterface
+    public interface ResultWriter {
+        String write(String value, String keyword);
+    }
+
     private final StringBuilder out = new StringBuilder();
     private final String returnKeyword;
+    private final ResultWriter result;
     private int indent;
 
-    private JavaPrinter(String returnKeyword) {
+    private JavaPrinter(String returnKeyword, ResultWriter result) {
         this.returnKeyword = returnKeyword;
+        this.result = result;
     }
 
     /** A method body (without braces): the result is returned. */
     public static String methodBody(Body body) {
-        JavaPrinter p = new JavaPrinter("return");
+        return methodBody(body, "", null);
+    }
+
+    /**
+     * A method body (without braces) starting with {@code prologue} (statements converting the
+     * parameters, see {@link JavaBoundary}); the result is returned through {@code result} when given.
+     */
+    public static String methodBody(Body body, String prologue, ResultWriter result) {
+        JavaPrinter p = new JavaPrinter("return", result);
+        p.lines(prologue);
         p.body(body);
         return p.out.toString();
     }
@@ -56,10 +73,24 @@ public final class JavaPrinter {
      * expression is expected.
      */
     public static String expression(Body body) {
-        JavaPrinter p = new JavaPrinter("yield");
+        return expression(body, "", null);
+    }
+
+    /** Like {@link #expression(Body)}, with a prologue and a result writer (see {@link #methodBody(Body, String, ResultWriter)}). */
+    public static String expression(Body body, String prologue, ResultWriter result) {
+        JavaPrinter p = new JavaPrinter("yield", result);
         p.indent = 1;
+        p.lines(prologue);
         p.body(body);
         return "switch (0) { default -> {\n" + p.out + "} }";
+    }
+
+    private void lines(String block) {
+        for (String l : block.split("\n")) {
+            if (!l.isEmpty()) {
+                line(l);
+            }
+        }
     }
 
     private void body(Body body) {
@@ -105,7 +136,13 @@ public final class JavaPrinter {
                     block(i.otherwise());
                 }
             }
-            case Return r -> line(returnKeyword + " " + expr(r.value()) + ";");
+            case Return r -> {
+                if (result == null) {
+                    line(returnKeyword + " " + expr(r.value()) + ";");
+                } else {
+                    lines(result.write(expr(r.value()), returnKeyword));
+                }
+            }
             case Throw ignored -> line("throw new " + VEL_EXCEPTION + "();");
         }
     }
