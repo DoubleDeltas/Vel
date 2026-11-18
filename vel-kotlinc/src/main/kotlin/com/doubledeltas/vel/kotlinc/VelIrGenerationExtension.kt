@@ -67,14 +67,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
 
     private object Bindings {
         fun of(declaration: IrValueDeclaration, type: Boundary?): Binding {
-        val t = declaration.type
-        val ushort = t.classFqName?.asString() == "kotlin.UShort"
-        val adapter = when {
-            ushort && t.isMarkedNullable() -> IrEmitter.Adapter.NULLABLE_USHORT
-            ushort -> IrEmitter.Adapter.USHORT
-            t.isMarkedNullable() -> IrEmitter.Adapter.NOT_NULL
-            else -> null
-        }
+        val adapter = if (declaration.type.isMarkedNullable()) IrEmitter.Adapter.NOT_NULL else null
         return Binding(declaration, type, adapter)
         }
     }
@@ -176,7 +169,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
                 }
                 val write = if (target != null && !target.isDirect) IrEmitter.Write(target, call.type) else null
                 IrEmitter(context, file, function, call.startOffset, call.endOffset, values, adapters)
-                    .emit(body, toUShort = call.type.classFqName?.asString() == "kotlin.UShort", reads = reads, write = write)
+                    .emit(body, reads = reads, write = write)
             } catch (e: VelCompileError) {
                 report(arg, VelDiagnostic.error(e.line(), e.column(), e.message).format())
                 null
@@ -213,16 +206,17 @@ class VelIrGenerationExtension : IrGenerationExtension {
 
         private fun boundaryOf(type: IrType, nested: Boolean): Boundary? {
             val name = type.classFqName?.asString() ?: return null
+            val representation = REPRESENTATIONS[name]
             PRIMITIVES[name]?.let { scalar ->
-                return if (nested && type.isMarkedNullable()) Boundary.Boxed(scalar, JavaTypes.javaName(scalar.resolution()))
-                else Boundary.Direct(listOf(), scalar)
+                return if (nested && type.isMarkedNullable()) Boundary.Boxed(scalar, representation ?: JavaTypes.javaName(scalar.resolution()))
+                else Boundary.Direct(listOf(), scalar, representation)
             }
-            PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it) }
+            PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it, representation) }
             val arguments = (type as? IrSimpleType)?.arguments ?: emptyList()
             if (name == "kotlin.Array") {
                 val element = arguments.singleOrNull()?.typeOrNull ?: return null
                 val inner = boundaryOf(element, nested = true) ?: return null
-                if (inner is Boundary.Direct && inner.rank() > 0) return Boundary.Direct(inner.dims() + Card.TOP, inner.element())
+                if (inner is Boundary.Direct && inner.rank() > 0) return Boundary.Direct(inner.dims() + Card.TOP, inner.element(), inner.representation())
                 return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, name)
             }
             if (name in LISTS) {
@@ -281,13 +275,17 @@ class VelIrGenerationExtension : IrGenerationExtension {
 
         private val LISTS = setOf("kotlin.collections.List", "kotlin.collections.MutableList", "java.util.ArrayList")
 
-        /** Kotlin arrays of scalars. `UShortArray` is not supported: `Z+16` is held in `Char`. */
+        /** `UShort` holds `Z+16` in the bits of a `Short` (the `ushort` representation), not in a `Char`. */
+        private val REPRESENTATIONS = mapOf("kotlin.UShort" to "ushort", "kotlin.UShortArray" to "ushort")
+
+        /** Kotlin arrays of scalars. */
         private val PRIMITIVE_ARRAYS = mapOf(
             "kotlin.BooleanArray" to primitive("boolean"), "kotlin.ByteArray" to primitive("byte"),
             "kotlin.ShortArray" to primitive("short"), "kotlin.CharArray" to primitive("char"),
             "kotlin.IntArray" to primitive("int"), "kotlin.LongArray" to primitive("long"),
             "kotlin.FloatArray" to primitive("float"), "kotlin.DoubleArray" to primitive("double"),
-            "kotlin.UByteArray" to unsigned(8), "kotlin.UIntArray" to unsigned(32), "kotlin.ULongArray" to unsigned(64),
+            "kotlin.UByteArray" to unsigned(8), "kotlin.UShortArray" to unsigned(16), "kotlin.UIntArray" to unsigned(32),
+            "kotlin.ULongArray" to unsigned(64),
         )
     }
 }

@@ -134,8 +134,7 @@ class VelSymbolProcessor(
                 val local = codeNames[name] ?: continue
                 prologue.append(read(boundaries.getValue(name), declared.getValue(name), name, local))
             }
-            val returned: (String) -> String =
-                if (declaredReturn.removeSuffix("?") == "kotlin.UShort") { v -> "($v).code.toUShort()" } else { v -> v }
+            val returned: (String) -> String = { v -> v }
             val resultBlock: ((String) -> String)? =
                 if (result.isDirect) null else { v -> KotlinBoundary.write(result, v, "result") }
             val body = KotlinPrinter.functionBody(code, prologue.toString(), returned, resultBlock)
@@ -169,10 +168,8 @@ class VelSymbolProcessor(
     private fun read(b: Boundary, declared: KSType, name: String, local: String): String {
         val used = KotlinPrinter.type(codeType(b.type()))
         if (b.isDirect) {
-            // T? to T (null throws), nested nullable arrays (unchecked), UShort to the Char holding Z+16
-            val value = if (declared.declaration.qualifiedName?.asString() == "kotlin.UShort") "($name as kotlin.UShort).toInt().toChar()"
-            else "$name as $used"
-            return "val $local: $used = $value\n"
+            // T? to T (null throws), nested nullable arrays (unchecked)
+            return "val $local: $used = $name as $used\n"
         }
         return KotlinBoundary.read(b, if (declared.isMarkedNullable) "$name!!" else name, local)
     }
@@ -194,17 +191,18 @@ class VelSymbolProcessor(
     private fun boundaryOf(type: KSType): Boundary {
         val name = type.declaration.qualifiedName?.asString()
             ?: throw VelTypeException("the Kotlin type $type is not supported by VEL yet")
+        val representation = REPRESENTATIONS[name]
         PRIMITIVES[name]?.let { scalar ->
-            return if (type.isMarkedNullable) Boundary.Boxed(scalar, JavaTypes.javaName(scalar.resolution()))
-            else Boundary.Direct(listOf(), scalar)
+            return if (type.isMarkedNullable) Boundary.Boxed(scalar, representation ?: JavaTypes.javaName(scalar.resolution()))
+            else Boundary.Direct(listOf(), scalar, representation)
         }
-        PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it) }
+        PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it, representation) }
         if (name == "kotlin.Array") {
             val element = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
             val inner = boundaryOf(element)
             // Array<DoubleArray> is a primitive array of rank 2; Array<Double> holds boxed values
             if (inner is Boundary.Direct && inner.rank() > 0) { // nullable rows are cast (null throws when read)
-                return Boundary.Direct(inner.dims() + Card.TOP, inner.element())
+                return Boundary.Direct(inner.dims() + Card.TOP, inner.element(), inner.representation())
             }
             return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, render(type.makeNotNullable()))
         }
@@ -249,7 +247,7 @@ class VelSymbolProcessor(
     }
 
     private fun codeType(t: ConcreteType) =
-        com.doubledeltas.vel.core.codegen.Code.Type(JavaTypes.javaName(t.element().resolution()), t.javaRank())
+        com.doubledeltas.vel.core.codegen.Code.Type(t.primitive(), t.javaRank())
 
     private fun writeClass(owner: KSClassDeclaration, functions: List<String>) {
         val pkg = owner.packageName.asString()
@@ -307,13 +305,17 @@ class VelSymbolProcessor(
         private val LISTS = setOf("kotlin.collections.List", "kotlin.collections.MutableList", "java.util.ArrayList",
             "kotlin.collections.ArrayList")
 
-        /** Kotlin arrays of scalars. `UShortArray` is not supported: `Z+16` is held in `Char`. */
+        /** `UShort` holds `Z+16` in the bits of a `Short` (the `ushort` representation), not in a `Char`. */
+        private val REPRESENTATIONS = mapOf("kotlin.UShort" to "ushort", "kotlin.UShortArray" to "ushort")
+
+        /** Kotlin arrays of scalars. */
         private val PRIMITIVE_ARRAYS = mapOf(
             "kotlin.BooleanArray" to primitive("boolean"), "kotlin.ByteArray" to primitive("byte"),
             "kotlin.ShortArray" to primitive("short"), "kotlin.CharArray" to primitive("char"),
             "kotlin.IntArray" to primitive("int"), "kotlin.LongArray" to primitive("long"),
             "kotlin.FloatArray" to primitive("float"), "kotlin.DoubleArray" to primitive("double"),
-            "kotlin.UByteArray" to unsigned(8), "kotlin.UIntArray" to unsigned(32), "kotlin.ULongArray" to unsigned(64),
+            "kotlin.UByteArray" to unsigned(8), "kotlin.UShortArray" to unsigned(16), "kotlin.UIntArray" to unsigned(32),
+            "kotlin.ULongArray" to unsigned(64),
         )
     }
 }

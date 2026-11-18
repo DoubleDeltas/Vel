@@ -36,7 +36,12 @@ public sealed interface Boundary {
     /** The type generated code works with. */
     default ConcreteType type() {
         List<Card> d = dims().isEmpty() ? List.of(Card.ONE) : dims();
-        return new ConcreteType(d, element());
+        return new ConcreteType(d, element(), this instanceof Direct direct ? direct.representation() : null);
+    }
+
+    /** The {@link Code.Type} primitive holding the elements as the target language gives them. */
+    default String primitive() {
+        return JavaTypes.javaName(element().resolution());
     }
 
     /** Whether the value is used as it is (no conversion at the boundary). */
@@ -47,11 +52,22 @@ public sealed interface Boundary {
     /**
      * A primitive ({@code rank} 0) or an array of primitives of {@code rank} levels.
      *
-     * @param dims the VEL sizes, innermost level first ({@code rank} of them)
+     * @param dims           the VEL sizes, innermost level first ({@code rank} of them)
+     * @param representation the primitive holding the elements when it is not the default one of the
+     *                       resolution (Kotlin {@code UShort}: {@code ushort}), or null
      */
-    record Direct(List<Card> dims, ScalarType element) implements Boundary {
+    record Direct(List<Card> dims, ScalarType element, String representation) implements Boundary {
         public Direct {
             dims = List.copyOf(dims);
+        }
+
+        public Direct(List<Card> dims, ScalarType element) {
+            this(dims, element, null);
+        }
+
+        @Override
+        public String primitive() {
+            return representation != null ? representation : JavaTypes.javaName(element.resolution());
         }
 
         public int rank() {
@@ -166,7 +182,7 @@ public sealed interface Boundary {
 
     private static Boundary sized(Boundary b, List<Card> dims, int offset) {
         return switch (b) {
-            case Direct d -> new Direct(dims.subList(offset, offset + d.rank()), d.element());
+            case Direct d -> new Direct(dims.subList(offset, offset + d.rank()), d.element(), d.representation());
             case Boxed x -> x;
             case Sequence s -> new Sequence(s.kind(), sized(s.of(), dims, offset),
                     dims.get(offset + s.of().dims().size()), s.className());

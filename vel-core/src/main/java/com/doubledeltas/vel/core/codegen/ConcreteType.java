@@ -13,11 +13,27 @@ import com.doubledeltas.vel.core.type.Card;
  * Its Java representation follows java.md 2: a Java array {@code a[m][n]} is the VEL matrix
  * {@code Mat(n, m)}, so VEL dimension {@code k} is the {@code k}-th array level counted from the
  * innermost one, and trailing dimensions of size 1 are not represented.
+ * <p>
+ * A resolution can have more than one representation: {@code Z+16} is {@code char} (Java {@code char},
+ * Kotlin {@code Char}) or {@code ushort} (Kotlin {@code UShort}, stored in {@code short}). The two
+ * convert into each other by their bits, without copying.
+ *
+ * @param representation the {@link Code.Type} primitive holding the elements, or null for the default
+ *                       one of the resolution ({@link JavaTypes#javaName})
  */
-public record ConcreteType(List<Card> dims, ScalarType element) {
+public record ConcreteType(List<Card> dims, ScalarType element, String representation) {
 
     public ConcreteType {
         dims = new ArrayAlgebra(dims, element.algebra()).dims(); // canonical form
+    }
+
+    public ConcreteType(List<Card> dims, ScalarType element) {
+        this(dims, element, null);
+    }
+
+    /** The {@link Code.Type} primitive of the elements. */
+    public String primitive() {
+        return representation != null ? representation : JavaTypes.javaName(element.resolution());
     }
 
     public static ConcreteType scalar(ScalarType element) {
@@ -54,7 +70,7 @@ public record ConcreteType(List<Card> dims, ScalarType element) {
 
     /** The Java type, e.g. {@code double}, {@code int[][]}. */
     public String javaName() {
-        return JavaTypes.storage(JavaTypes.javaName(element.resolution())) + "[]".repeat(javaRank());
+        return JavaTypes.storage(primitive()) + "[]".repeat(javaRank());
     }
 
     @Override

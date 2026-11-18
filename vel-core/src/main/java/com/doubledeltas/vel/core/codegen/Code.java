@@ -16,7 +16,8 @@ public final class Code {
 
     /**
      * A JVM primitive ({@code boolean byte short char int long float double}), an unsigned integer
-     * stored in the bits of one ({@code ubyte uint ulong}, see {@link JavaTypes#javaName}), or an array of it.
+     * stored in the bits of one ({@code ubyte ushort uint ulong}, see {@link JavaTypes#javaName} and
+     * {@link ConcreteType#representation}), or an array of it.
      * Arithmetic on unsigned values wraps like the signed one; division, remainder, ordering and
      * conversions are unsigned.
      *

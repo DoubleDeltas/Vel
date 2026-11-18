@@ -66,8 +66,8 @@ import java.math.BigInteger
  * `VelMath` and `java.lang.Math` provide the helpers, as in the Java and Kotlin source backends.
  * The unsigned `ubyte uint ulong` are `UByte UInt ULong`, whose members are already unsigned.
  *
- * A value can be adapted where it is read ([Adapter]): a nullable Kotlin value is checked (`!!`), a
- * `UShort` is read as the `Char` that holds `Z+16`.
+ * A nullable Kotlin value is checked (`!!`) where it is read ([Adapter]). `UShort` is the `ushort`
+ * representation of `Z+16`, converted to and from `Char` by its bits.
  */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 internal class IrEmitter(
@@ -80,7 +80,7 @@ internal class IrEmitter(
     private val adapters: Map<String, Adapter> = emptyMap(),
 ) {
     /** How a Kotlin value is read into the generated code. */
-    enum class Adapter { NOT_NULL, USHORT, NULLABLE_USHORT }
+    enum class Adapter { NOT_NULL }
 
     private val builtIns = plugin.irBuiltIns
     private val finder = plugin.finderForSource(file)
@@ -95,23 +95,21 @@ internal class IrEmitter(
 
     /**
      * The expression computing an inline VEL expression: its statements end with one Return (or Throw).
-     * The [reads] convert the variables first; with [write] (or [toUShort], a `Char` result as `UShort`)
-     * the result is built into the type the context expects.
+     * The [reads] convert the variables first; with [write] the result is built into the type the
+     * context expects.
      */
-    fun emit(body: Code.Body, toUShort: Boolean = false, reads: List<Read> = emptyList(), write: Write? = null): IrExpression {
+    fun emit(body: Code.Body, reads: List<Read> = emptyList(), write: Write? = null): IrExpression {
         val last = body.statements().last()
         val type = when {
             last !is Code.Return -> builtIns.nothingType
             write != null -> write.type
-            toUShort -> irType(Code.Type.scalar("ushort"))
             else -> irType(last.value().type())
         }
         val block = builder.irBlock(resultType = type) {
             for (r in reads) readInto(r)
-            if (last is Code.Return && (toUShort || write != null)) {
+            if (last is Code.Return && write != null) {
                 statements(body.statements().dropLast(1))
-                val value = expr(last.value())
-                +(if (write != null) writeOut(write, value, irType(last.value().type())) else charToUShort(value))
+                +writeOut(write, expr(last.value()), irType(last.value().type()))
             } else {
                 statements(body.statements())
             }
@@ -201,19 +199,9 @@ internal class IrEmitter(
 
     private fun IrBuilderWithScope.read(r: Code.Ref): IrExpression {
         val value: IrExpression = irGet(locals[r.name()] ?: error("VEL: unknown generated name ${r.name()}"))
-        val adapter = adapters[r.name()] ?: return value
-        val nonNull = if (adapter == Adapter.USHORT) value else
-            irCall(builtIns.checkNotNullSymbol, value.type.makeNotNull()).apply {
-                typeArguments[0] = value.type.makeNotNull()
-                arguments[0] = value
-            }
-        return if (adapter == Adapter.NOT_NULL) nonNull
-        else member(Code.Type.INT, "toChar", member(Code.Type.scalar("ushort"), "toInt", nonNull))
+        adapters[r.name()] ?: return value
+        return notNull(value)
     }
-
-    /** A `Char` result as the `UShort` the context expects. */
-    fun IrBuilderWithScope.charToUShort(value: IrExpression): IrExpression =
-        extension("toUShort", "int", convert(value, "char", "int"))
 
     private fun IrBuilderWithScope.literal(l: Code.Lit): IrExpression {
         val type = irType(l.type())
@@ -225,6 +213,7 @@ internal class IrEmitter(
                 "uint" -> extension("toUInt", "int", irInt(v.toInt()))
                 "ulong" -> extension("toULong", "long", irLong(v.toLong()))
                 "ubyte" -> extension("toUByte", "int", irInt(v.toInt()))
+                "ushort" -> extension("toUShort", "int", irInt(v.toInt()))
                 "int" -> irInt(v.toInt())
                 "long" -> irLong(v.toLong())
                 "short" -> IrConstImpl.short(start, end, type, v.toShort())
@@ -512,7 +501,7 @@ internal class IrEmitter(
         return Code.Ref(name, type)
     }
 
-    private fun codeType(t: ConcreteType) = Code.Type(JavaTypes.javaName(t.element().resolution()), t.javaRank())
+    private fun codeType(t: ConcreteType) = Code.Type(t.primitive(), t.javaRank())
 
     private fun IrStatementsBuilder<*>.readInto(r: Read) {
         val b = r.boundary
@@ -533,7 +522,7 @@ internal class IrEmitter(
 
     /** A scalar Kotlin value (nullable in a [Boundary.Boxed]) as the primitive [element]. */
     private fun IrBuilderWithScope.scalarOf(b: Boundary, value: IrExpression, element: String): IrExpression {
-        val from = if (b is Boundary.Boxed) b.primitive() else JavaTypes.javaName(b.element().resolution())
+        val from = b.primitive()
         return convert(if (b is Boundary.Boxed) notNull(value) else value, from, element)
     }
 
@@ -551,7 +540,7 @@ internal class IrEmitter(
         when (b) {
             is Boundary.Boxed -> +storeAt(target, t, idx, scalarOf(b, irGet(source), t.primitive()))
             is Boundary.Direct -> {
-                val p = JavaTypes.javaName(b.element().resolution())
+                val p = b.primitive()
                 if (b.rank() == 0) {
                     +storeAt(target, t, idx, convert(irGet(source), p, t.primitive()))
                     return
@@ -594,7 +583,7 @@ internal class IrEmitter(
     private fun IrStatementsBuilder<*>.length(b: Boundary, source: IrValueDeclaration, sourceType: IrType, k: Int): IrExpression =
         when (b) {
             is Boundary.Direct -> (b.dims()[k] as? Card.Finite)?.let { irInt(it.size().toInt()) } ?: run {
-                var e: Code.Expr = bind(source, Code.Type(JavaTypes.javaName(b.element().resolution()), b.rank()))
+                var e: Code.Expr = bind(source, Code.Type(b.primitive(), b.rank()))
                 repeat(b.rank() - 1 - k) { e = Code.Get(e, Code.Lit(Code.Type.INT, BigInteger.ZERO), e.type().component()) }
                 expr(Code.Length(e))
             }
@@ -693,7 +682,7 @@ internal class IrEmitter(
         return when (b) {
             is Boundary.Boxed -> convert(at(), t.primitive(), b.primitive())
             is Boundary.Direct -> {
-                val p = JavaTypes.javaName(b.element().resolution())
+                val p = b.primitive()
                 if (b.rank() == 0) return convert(at(), t.primitive(), p)
                 val type = Code.Type(p, b.rank())
                 val lengths = (0 until b.rank()).map { k -> bind(irTemporary(lengthOfValue(offset + k), "n", builtIns.intType), Code.Type.INT) }

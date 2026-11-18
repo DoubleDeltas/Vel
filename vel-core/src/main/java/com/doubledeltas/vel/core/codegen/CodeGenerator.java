@@ -129,7 +129,7 @@ public final class CodeGenerator {
             String code = codeNames.getOrDefault(name, name);
             names.add(name);
             names.add(code);
-            Type t = new Type(JavaTypes.javaName(type.element().resolution()), type.javaRank());
+            Type t = new Type(type.primitive(), type.javaRank());
             params.put(name, new Val(type.algebra(), type.element().resolution(), new Ref(code, t), true));
         });
     }
@@ -230,7 +230,7 @@ public final class CodeGenerator {
         }
         if (returnType == null) {
             // no expected type: the value keeps its own resolution (a constant takes its default)
-            out.add(new Return(v.isScalar() ? conv(v, resolve(v)) : arrayCode(v, v.res(), true)));
+            out.add(new Return(v.isScalar() ? conv(v, resolve(v)) : arrayCode(v, v.res(), v.code().type().primitive(), true)));
             return;
         }
         ScalarType target = returnType.element();
@@ -241,7 +241,7 @@ public final class CodeGenerator {
             if (!v.isScalar()) {
                 throw new VelTypeException("cannot return " + v.alg() + " as the scalar " + returnType);
             }
-            out.add(new Return(conv(v, target.resolution())));
+            out.add(new Return(convTo(v, returnType.primitive())));
             return;
         }
         checkShape(v.alg().dims(), returnType.dims(), "cannot return " + v.alg() + " as " + returnType + ":");
@@ -250,7 +250,7 @@ public final class CodeGenerator {
                     + ": the orientation differs (a row and a column?); transpose it with '");
         }
         Val array = v.isScalar() ? broadcastTo(v, returnType.dims()) : v;
-        out.add(new Return(arrayCode(array, target.resolution(), true)));
+        out.add(new Return(arrayCode(array, target.resolution(), returnType.primitive(), true)));
     }
 
     /** Known sizes must match; ⊤ matches anything. */
@@ -619,7 +619,7 @@ public final class CodeGenerator {
         if (branch.isNot()) {
             return new Fail(t);
         }
-        return arrayCode(branch.isScalar() ? broadcastTo(branch, alg.dims()) : branch, r, false);
+        return arrayCode(branch.isScalar() ? broadcastTo(branch, alg.dims()) : branch, r, JavaTypes.javaName(r), false);
     }
 
     private Val transpose(Val a) {
@@ -926,14 +926,24 @@ public final class CodeGenerator {
 
     /** A new array of the given algebra whose element at each index is {@code element.apply(index)}. */
     private Val tabulate(ArrayAlgebra alg, Resolution res, List<Expr> lengths, Function<List<Expr>, Expr> element) {
-        Val result = allocate(alg, res, lengths);
+        return tabulate(alg, res, JavaTypes.javaName(res), lengths, element);
+    }
+
+    /** Like {@link #tabulate(ArrayAlgebra, Resolution, List, Function)}, the elements held in {@code primitive}. */
+    private Val tabulate(ArrayAlgebra alg, Resolution res, String primitive, List<Expr> lengths,
+                         Function<List<Expr>, Expr> element) {
+        Val result = allocate(alg, res, primitive, lengths);
         forEach(lengths, idx -> store(result, idx, element.apply(idx)));
         return result;
     }
 
     private Val allocate(ArrayAlgebra alg, Resolution res, List<Expr> lengths) {
+        return allocate(alg, res, JavaTypes.javaName(res), lengths);
+    }
+
+    private Val allocate(ArrayAlgebra alg, Resolution res, String primitive, List<Expr> lengths) {
         int r = JavaTypes.javaRank(alg.dims());
-        Type t = new Type(JavaTypes.javaName(res), r);
+        Type t = new Type(primitive, r);
         List<Expr> outerFirst = new ArrayList<>();
         for (int k = r - 1; k >= 0; k--) {
             outerFirst.add(lengths.get(k));
@@ -1023,9 +1033,12 @@ public final class CodeGenerator {
                 dims.stream().map(d -> (Expr) intLit(((Card.Finite) d).size())).toList(), idx -> conv(s, r));
     }
 
-    /** An array with the given element resolution; copied when converted, or when owned by the caller and {@code leaving}. */
-    private Expr arrayCode(Val v, Resolution target, boolean leaving) {
-        if (JavaTypes.javaName(v.res()).equals(JavaTypes.javaName(target)) && !(leaving && v.external())) {
+    /**
+     * An array with the given element resolution held in {@code primitive}; copied when converted, or
+     * when owned by the caller and {@code leaving}.
+     */
+    private Expr arrayCode(Val v, Resolution target, String primitive, boolean leaving) {
+        if (v.code().type().primitive().equals(primitive) && !(leaving && v.external())) {
             return v.code();
         }
         List<Expr> lengths = new ArrayList<>();
@@ -1033,8 +1046,8 @@ public final class CodeGenerator {
             lengths.add(lengthOf(v, k));
         }
         guarded = true;
-        return tabulate(new ArrayAlgebra(v.alg().dims(), v.alg().element()), target, lengths,
-                idx -> conv(scalarVal(v.alg().element(), v.res(), elementAt(v, idx)), target)).code();
+        return tabulate(new ArrayAlgebra(v.alg().dims(), v.alg().element()), target, primitive, lengths,
+                idx -> convTo(scalarVal(v.alg().element(), v.res(), elementAt(v, idx)), primitive)).code();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1055,7 +1068,15 @@ public final class CodeGenerator {
 
     /** A scalar value as an expression of the primitive for {@code target}. */
     private Expr conv(Val v, Resolution target) {
-        Type type = Type.scalar(JavaTypes.javaName(target));
+        return convTo(v, JavaTypes.javaName(target));
+    }
+
+    /**
+     * A scalar value as an expression of {@code primitive}. The conversion starts from the value's own
+     * representation (e.g. {@code ushort} or {@code char} for {@code Z+16}).
+     */
+    private Expr convTo(Val v, String primitive) {
+        Type type = Type.scalar(primitive);
         if (v.isNot()) {
             return new Fail(type);
         }
@@ -1065,7 +1086,7 @@ public final class CodeGenerator {
         if (v.isConstant()) {
             return literal(v.alg().constant(), type);
         }
-        String from = JavaTypes.javaName(v.res());
+        String from = v.code().type().primitive();
         if (from.equals(type.primitive())) {
             return v.code();
         }
@@ -1112,7 +1133,7 @@ public final class CodeGenerator {
     }
 
     private static Type typeOf(Val v) {
-        return new Type(JavaTypes.javaName(v.res()), JavaTypes.javaRank(v.alg().dims()));
+        return v.code().type();
     }
 
     private static Expr plus(Expr a, Expr b) {

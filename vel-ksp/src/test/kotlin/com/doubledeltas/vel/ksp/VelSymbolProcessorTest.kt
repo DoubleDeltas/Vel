@@ -190,6 +190,40 @@ class VelSymbolProcessorTest {
     }
 
     @Test
+    fun ushortArrays() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.Vel
+            interface Shorts {
+                @Vel("u")
+                fun same(u: UShortArray): UShortArray
+                @Vel("2 * u")                      // Z+32, wrapped back into Z+16 when returned
+                fun twice(u: UShortArray): UShortArray
+                @Vel("u[1]")
+                fun second(u: UShortArray): UShort
+                @Vel("u[0] + n")
+                fun plus(u: UShortArray, n: UInt): UInt
+                @Vel("c + 1")                      // Char and UShort are both Z+16
+                fun next(c: Char): UShort
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val type = result.classLoader.loadClass("ShortsVel")
+        val shorts = type.getConstructor().newInstance()
+        fun call(name: String, vararg args: Any?): Any? {
+            val m = type.methods.single { it.name == name || it.name.startsWith("$name-") }
+            return m.invoke(shorts, *args)
+        }
+        // UShortArray is a short[] on the JVM, UShort a short
+        assertArrayEquals(shortArrayOf(1, -1), call("same", shortArrayOf(1, -1)) as ShortArray)
+        assertArrayEquals(shortArrayOf(2, 14464), call("twice", shortArrayOf(1, 40000.toShort())) as ShortArray)
+        assertEquals(65535.toShort(), call("second", shortArrayOf(0, -1)))
+        assertEquals(65535 + 1, call("plus", shortArrayOf(-1), 1))
+        assertEquals(98.toShort(), call("next", 'a'))
+    }
+
+    @Test
     fun unsupportedTypeIsReported() {
         val result = compile(
             """

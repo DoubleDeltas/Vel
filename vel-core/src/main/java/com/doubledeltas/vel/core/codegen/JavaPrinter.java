@@ -182,9 +182,10 @@ public final class JavaPrinter {
         String operand = b.left().type().primitive();
         if (JavaTypes.isUnsigned(operand)) {
             String box = operand.equals("ulong") ? "Long" : "Integer";
-            if (operand.equals("ubyte")) {
-                l = "Byte.toUnsignedInt(" + l + ")";
-                r = "Byte.toUnsignedInt(" + r + ")";
+            if (operand.equals("ubyte") || operand.equals("ushort")) {
+                String narrow = operand.equals("ubyte") ? "Byte" : "Short";
+                l = narrow + ".toUnsignedInt(" + l + ")";
+                r = narrow + ".toUnsignedInt(" + r + ")";
             } else if (b.op() == Code.Op.DIV) {
                 return box + ".divideUnsigned(" + l + ", " + r + ")";
             } else if (b.op() == Code.Op.REM) {
@@ -224,6 +225,10 @@ public final class JavaPrinter {
             }
             case "ubyte" -> {
                 code = "Byte.toUnsignedInt(" + code + ")";
+                from = "int";
+            }
+            case "ushort" -> {
+                code = "Short.toUnsignedInt(" + code + ")";
                 from = "int";
             }
             case "ulong" -> {
@@ -280,6 +285,7 @@ public final class JavaPrinter {
                 case "uint" -> String.valueOf(big.intValue());
                 case "ulong" -> big.longValue() + "L";
                 case "ubyte" -> "((byte) " + big.byteValue() + ")";
+                case "ushort" -> "((short) " + big.shortValue() + ")";
                 default -> "((" + p + ") " + v + ")";
             };
         }

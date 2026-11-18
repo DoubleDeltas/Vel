@@ -36,7 +36,7 @@ public final class JavaBoundary {
 
     private void declareRead(Boundary b, String source, String target) {
         ConcreteType t = b.type();
-        String element = JavaTypes.storage(JavaTypes.javaName(t.element().resolution()));
+        String element = JavaTypes.storage(t.primitive());
         if (t.javaRank() == 0) {
             line("final " + element + " " + target + " = " + scalar(b, source, element) + ";");
             return;
@@ -61,7 +61,7 @@ public final class JavaBoundary {
     private static String scalar(Boundary b, String source, String element) {
         String value = b instanceof Boundary.Boxed boxed ? source + "." + boxed.primitive() + "Value()" : source;
         String from = b instanceof Boundary.Boxed boxed ? boxed.primitive()
-                : JavaTypes.storage(JavaTypes.javaName(b.element().resolution()));
+                : JavaTypes.storage(b.primitive());
         return from.equals(element) ? value : "((" + element + ") " + value + ")";
     }
 
@@ -87,7 +87,7 @@ public final class JavaBoundary {
                 for (int k = d.rank() - 1; k >= 0; k--) {
                     e.append('[').append(loops[k]).append(']');
                 }
-                String from = JavaTypes.storage(JavaTypes.javaName(d.element().resolution()));
+                String from = JavaTypes.storage(d.primitive());
                 String value = from.equals(element) ? e.toString() : "((" + element + ") " + e + ")";
                 line(at(target, idx, javaRank) + " = " + value + ";");
                 for (int k = 0; k < d.rank(); k++) {
@@ -163,7 +163,7 @@ public final class JavaBoundary {
 
     /** An expression of the declared type for the part of {@code v} at VEL dimensions {@code offset}…. */
     private String build(Boundary b, String v, ConcreteType t, int offset, String[] idx) {
-        String element = JavaTypes.storage(JavaTypes.javaName(t.element().resolution()));
+        String element = JavaTypes.storage(t.primitive());
         switch (b) {
             case Boundary.Boxed x -> {
                 String e = at(v, idx, t.javaRank());
@@ -171,7 +171,7 @@ public final class JavaBoundary {
                 return JavaTypes.boxed(x.primitive()) + ".valueOf(" + value + ")";
             }
             case Boundary.Direct d -> {
-                String target = JavaTypes.storage(JavaTypes.javaName(d.element().resolution()));
+                String target = JavaTypes.storage(d.primitive());
                 if (d.rank() == 0) {
                     String e = at(v, idx, t.javaRank());
                     return target.equals(element) ? e : "((" + target + ") " + e + ")";

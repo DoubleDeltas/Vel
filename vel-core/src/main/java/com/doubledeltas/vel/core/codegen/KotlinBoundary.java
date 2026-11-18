@@ -36,7 +36,7 @@ public final class KotlinBoundary {
 
     private void declareRead(Boundary b, String source, String target) {
         ConcreteType t = b.type();
-        String element = JavaTypes.javaName(t.element().resolution());
+        String element = t.primitive();
         String type = KotlinPrinter.type(new Code.Type(element, t.javaRank()));
         if (t.javaRank() == 0) {
             line("val " + target + ": " + type + " = " + scalar(b, source, element));
@@ -60,7 +60,7 @@ public final class KotlinBoundary {
 
     /** The scalar {@code source} (a primitive or a nullable one) as the primitive {@code element}. */
     private static String scalar(Boundary b, String source, String element) {
-        String from = b instanceof Boundary.Boxed boxed ? boxed.primitive() : JavaTypes.javaName(b.element().resolution());
+        String from = b.primitive();
         String value = b instanceof Boundary.Boxed ? "(" + source + ")!!" : source;
         return KotlinPrinter.convert(value, from, element);
     }
@@ -86,7 +86,7 @@ public final class KotlinBoundary {
                 for (int k = d.rank() - 1; k >= 0; k--) {
                     e.append('[').append(loops[k]).append(']');
                 }
-                String from = JavaTypes.javaName(d.element().resolution());
+                String from = d.primitive();
                 line(at(target, idx, javaRank) + " = " + KotlinPrinter.convert(e.toString(), from, element));
                 for (int k = 0; k < d.rank(); k++) {
                     indent--;
@@ -147,13 +147,13 @@ public final class KotlinBoundary {
     }
 
     private String build(Boundary b, String v, ConcreteType t, int offset, String[] idx) {
-        String element = JavaTypes.javaName(t.element().resolution());
+        String element = t.primitive();
         switch (b) {
             case Boundary.Boxed x -> {
                 return KotlinPrinter.convert(at(v, idx, t.javaRank()), element, x.primitive());
             }
             case Boundary.Direct d -> {
-                String target = JavaTypes.javaName(d.element().resolution());
+                String target = d.primitive();
                 if (d.rank() == 0) {
                     return KotlinPrinter.convert(at(v, idx, t.javaRank()), element, target);
                 }

@@ -118,6 +118,7 @@ public final class KotlinPrinter {
     private static String scalarType(String primitive) {
         return switch (primitive) {
             case "ubyte" -> "UByte";
+            case "ushort" -> "UShort";
             case "uint" -> "UInt";
             case "ulong" -> "ULong";
             case "boolean" -> "Boolean";
@@ -286,6 +287,7 @@ public final class KotlinPrinter {
                 case "uint" -> v + "u";
                 case "ulong" -> v + "uL";
                 case "ubyte" -> "(" + v + "u).toUByte()";
+                case "ushort" -> "(" + v + "u).toUShort()";
                 case "char" -> "(" + v + ").toChar()";
                 default -> "(" + v + ").to" + scalarType(p) + "()";
             };

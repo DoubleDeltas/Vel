@@ -230,7 +230,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - **IR(`vel-kotlinc`)**: `IrGenerationExtension`에서 `VelInline.vel` 호출을 `IrEmitter`가 만든 블록으로 바꾼다. 보이는 이름은 매개변수·앞선 지역 변수·람다 매개변수(속성은 아직), 결과 타입은 호출의 추론 타입(`call.type`, 플랫폼 타입의 nullable은 무시). 산술·비교는 원시 클래스 멤버(`Double.plus`, `lessFunByOperandType`), 반복은 `while`, `Char.code`는 `kotlin` 패키지의 확장 속성.
   - Kotlin 2.4에서 확인한 함정: 선언 조회는 `finderForSource(file)`을 쓴다. Java 정적 메서드(`VelMath`, `java.lang.Math`)는 `findFunctions`로 안 잡혀서 `findClass(...).owner.declarations`에서 찾는다. `arrayOfNulls`(reified, 내장 심볼도)는 플러그인이 만든 호출에서 인라인되지 않아 런타임 오류가 나므로, 2차원 이상 배열은 `VelMath.newArray(descriptor, lengths...)`(`java.lang.reflect.Array.newInstance`) 후 `irAs`로 캐스트한다.
 - 테스트: `VelSymbolProcessorTest`(생성 Kotlin을 컴파일·실행), `VelCompilerPluginTest`(인라인 IR을 컴파일·실행), `vel-examples-kotlin`의 `PhysicsTest`(Gradle에서 KSP + 플러그인).
-- **nullable과 부호 없는 정수 (결정됨 2026-11-18)**: `T?`는 `T`와 같은 대수(kotlin.md 1.3). KSP는 함수 첫머리에서 `val x: T = x as T`(null이면 NPE, 안쪽 nullable 배열은 unchecked cast로 원소 접근 시 NPE), 시그니처는 선언 타입 그대로(`render`). IR은 읽을 때 `checkNotNull`. 부호 없는 정수는 kotlin.md 1.2대로 지원: `Code`에 `ubyte uint ulong`(비트 저장, `JavaTypes.storage`), `Z+16`은 `char`. 산술은 비트 그대로 순환, 나눗셈·나머지·비교·변환은 부호 없이(Java: `Integer.divideUnsigned` 등, `VelMath.unsignedToDouble`; Kotlin 소스: `UInt` 연산자 그대로; IR: `UInt` 멤버와 `kotlin.toUInt()` 등 확장 함수, 비교는 `compareTo`). `UShort`는 경계에서 `Char`와 변환(KSP 첫머리·반환, IR `Adapter.USHORT`). 미지원: `UShortArray`, 부호 없는 배열의 `Array`.
+- **nullable과 부호 없는 정수 (결정됨 2026-11-18)**: `T?`는 `T`와 같은 대수(kotlin.md 1.3). KSP는 함수 첫머리에서 `val x: T = x as T`(null이면 NPE, 안쪽 nullable 배열은 unchecked cast로 원소 접근 시 NPE), 시그니처는 선언 타입 그대로(`render`). IR은 읽을 때 `checkNotNull`. 부호 없는 정수는 kotlin.md 1.2대로 지원: `Code`에 `ubyte uint ulong`(비트 저장, `JavaTypes.storage`), `Z+16`은 `char`. 산술은 비트 그대로 순환, 나눗셈·나머지·비교·변환은 부호 없이(Java: `Integer.divideUnsigned` 등, `VelMath.unsignedToDouble`; Kotlin 소스: `UInt` 연산자 그대로; IR: `UInt` 멤버와 `kotlin.toUInt()` 등 확장 함수, 비교는 `compareTo`). `UShort`는 `ushort` 표현(아래 "해상도의 표현 둘").
 
 ### 경계 변환(Boundary) 구현 메모 (2026-11-18)
 - 생성기(`CodeGenerator`)는 JVM 원시 타입·배열만 다루고, 그 밖의 값은 **경계에서 변환**한다. `Boundary`(vel-core): `Direct`(원시·원시 배열), `Boxed`(래퍼, Kotlin 중첩 nullable 스칼라), `Sequence`(LIST / ARRAY, 원소 인덱스가 마지막 VEL 차원), `Components`(record·`componentN()`, 성분 인덱스가 첫 VEL 차원, 대수 ∨·해상도 ⊔). `Boundary.withDims`로 `@Dim` 적용.
@@ -240,7 +240,8 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - `Array<UIntArray>`(IR): `VelMath.newArrayLike(prototype, n)`(값 클래스 배열은 JVM에서 박싱된 객체 배열). Kotlin 소스는 `Array(n) { UIntArray(m) }`.
 - 반환 방향이 행/열로 다르면(`Mat(1, ⊤)`를 `double[]`로) 컴파일 오류: 전치하라고 안내.
 - KSP 테스트: kctfork가 KSP 2.3.12 구현을 끌어와 API 2.3.14와 어긋나 속성 방문 중 `NoSuchMethodError` → 테스트 의존성에 `symbol-processing`, `-common-deps`, `-aa-embeddable` 2.3.14를 명시.
-- 아직: `UShortArray`, 인라인 IR에서 스칼라가 아닌 원소의 `Array` 결과, Kotlin 인라인에서 속성 참조.
+- **해상도의 표현 둘 (결정됨 2026-11-18)**: 같은 해상도에 표현이 여럿일 수 있다. `Z+16`은 기본 `char`(Java `char`, Kotlin `Char`)이고, Kotlin `UShort`/`UShortArray`에서 온 값은 `ushort`(`short` 비트). `ConcreteType.representation`과 `Boundary.Direct.representation`에 담고(`primitive()`), 생성기는 해상도가 아니라 값의 코드 타입에서 변환을 시작한다(`convTo`). 계산 결과는 기본 표현, 반환할 때 대상 표현으로 비트 변환(복사 없음, 배열은 표현이 다를 때만 복사). 이전의 `UShort` ↔ `Char` 경계 어댑터는 없앴다.
+- 아직: 인라인 IR에서 스칼라가 아닌 원소의 `Array` 결과, Kotlin 인라인에서 속성 참조.
 
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.

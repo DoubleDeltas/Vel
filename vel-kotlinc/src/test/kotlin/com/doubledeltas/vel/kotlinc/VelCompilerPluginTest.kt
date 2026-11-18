@@ -177,6 +177,31 @@ class VelCompilerPluginTest {
     }
 
     @Test
+    fun ushortArrays() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.VelInline.vel
+
+            object Shorts {
+                @JvmStatic fun same(u: UShortArray): UShortArray = vel("u")
+                @JvmStatic fun twice(u: UShortArray): UShortArray = vel("2 * u")
+                @JvmStatic fun second(u: UShortArray): UShort = vel("u[1]")
+                @JvmStatic fun plus(u: UShortArray, n: UInt): UInt = vel("u[0] + n")
+                @JvmStatic fun next(c: Char): UShort = vel("c + 1")
+                @JvmStatic fun check(): Boolean =
+                    same(ushortArrayOf(1u, 65535u)).contentEquals(ushortArrayOf(1u, 65535u)) &&
+                    twice(ushortArrayOf(1u, 40000u)).contentEquals(ushortArrayOf(2u, 14464u)) &&
+                    second(ushortArrayOf(0u, 65535u)) == UShort.MAX_VALUE &&
+                    plus(ushortArrayOf(65535u), 1u) == 65536u &&
+                    next('a') == 98.toUShort()
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        assertEquals(true, result.classLoader.loadClass("Shorts").getMethod("check").invoke(null))
+    }
+
+    @Test
     fun typeErrorIsReportedAtLiteral() {
         val result = compile(
             """

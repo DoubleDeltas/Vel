@@ -94,6 +94,7 @@ public final class JavaTypes {
     public static String storage(String primitive) {
         return switch (primitive) {
             case "ubyte" -> "byte";
+            case "ushort" -> "short";
             case "uint" -> "int";
             case "ulong" -> "long";
             default -> primitive;
@@ -101,7 +102,7 @@ public final class JavaTypes {
     }
 
     public static boolean isUnsigned(String primitive) {
-        return primitive.equals("ubyte") || primitive.equals("uint") || primitive.equals("ulong");
+        return primitive.equals("ubyte") || primitive.equals("ushort") || primitive.equals("uint") || primitive.equals("ulong");
     }
 
     /** The boxed class of a primitive name, for generic helpers. */
