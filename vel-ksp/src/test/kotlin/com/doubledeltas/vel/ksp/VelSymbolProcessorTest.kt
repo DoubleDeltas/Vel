@@ -76,6 +76,57 @@ class VelSymbolProcessorTest {
     }
 
     @Test
+    fun unsignedAndNullableTypes() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.Vel
+            interface Numbers {
+                @Vel("a + b")                      // Z+32: wraps modulo 2^32
+                fun add(a: UInt, b: UInt): UInt
+                @Vel("a / b")                      // unsigned division of Z+64, then true division: F64
+                fun ratio(a: ULong, b: ULong): Double
+                @Vel("a // b")
+                fun quotient(a: ULong, b: ULong): ULong
+                @Vel("if a > b then 1 else 0")     // unsigned comparison
+                fun greater(a: UInt, b: UInt): Int
+                @Vel("a")
+                fun same(a: UShort): UShort
+                @Vel("a + b")
+                fun bytes(a: UByte, b: UByte): UInt
+                @Vel("2 * u")
+                fun twice(u: UIntArray): UIntArray
+                @Vel("x * 2")
+                fun nullable(x: Double?): Double?
+                @Vel("m[0, 1]")
+                fun nested(m: Array<DoubleArray?>?): Double
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val type = result.classLoader.loadClass("NumbersVel")
+        val n = type.getConstructor().newInstance()
+        fun call(name: String, vararg args: Any?): Any? {
+            val m = type.methods.single { it.name == name || it.name.startsWith("$name-") }
+            try {
+                return m.invoke(n, *args)
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                throw e.cause!!
+            }
+        }
+        // value classes are passed as their stored bits
+        assertEquals(1, call("add", -1, 2))                          // 0xFFFFFFFF + 2 = 1
+        assertEquals(Long.MAX_VALUE.toDouble() + 1, call("ratio", Long.MIN_VALUE, 1L)) // 2^63 / 1
+        assertEquals(Long.MIN_VALUE ushr 1, call("quotient", Long.MIN_VALUE, 2L))    // 2^63 / 2
+        assertEquals(1, call("greater", -1, 1))                      // 4294967295 > 1
+        assertEquals(65535.toShort(), call("same", 65535.toShort()))
+        assertEquals(510, call("bytes", 255.toByte(), 255.toByte()))
+        assertArrayEquals(intArrayOf(2, 0), call("twice", intArrayOf(1, Int.MIN_VALUE)) as IntArray)
+        assertEquals(6.0, call("nullable", 3.0))
+        assertThrows(NullPointerException::class.java) { call("nullable", null) }
+        assertEquals(2.0, call("nested", arrayOf(doubleArrayOf(1.0), doubleArrayOf(2.0))))
+    }
+
+    @Test
     fun unsupportedTypeIsReported() {
         val result = compile(
             """

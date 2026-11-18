@@ -75,6 +75,17 @@ public final class VelMath {
         return (float) floorMod((double) a, (double) b);
     }
 
+    // ---- unsigned ----------------------------------------------------------------------------------
+
+    /** The value of the unsigned 64-bit integer stored in {@code bits}, rounded to the nearest double. */
+    public static double unsignedToDouble(long bits) {
+        if (bits >= 0) {
+            return bits;
+        }
+        // halve (keeping the lowest bit so that rounding stays correct), convert, double
+        return ((bits >>> 1) | (bits & 1)) * 2.0;
+    }
+
     // ---- arrays -------------------------------------------------------------------------------------
 
     /**

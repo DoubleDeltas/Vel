@@ -41,6 +41,8 @@ import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
+import org.jetbrains.kotlin.ir.types.makeNotNull
+import com.doubledeltas.vel.core.codegen.JavaTypes
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
@@ -55,6 +57,10 @@ import java.math.BigInteger
  * Arithmetic and comparisons call the members of the primitive classes (`Double.plus`, …), arrays are
  * the primitive array classes (`DoubleArray`) and `Array`s of them, loops are `while` loops, and
  * `VelMath` and `java.lang.Math` provide the helpers, as in the Java and Kotlin source backends.
+ * The unsigned `ubyte uint ulong` are `UByte UInt ULong`, whose members are already unsigned.
+ *
+ * A value can be adapted where it is read ([Adapter]): a nullable Kotlin value is checked (`!!`), a
+ * `UShort` is read as the `Char` that holds `Z+16`.
  */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 internal class IrEmitter(
@@ -64,17 +70,32 @@ internal class IrEmitter(
     private val start: Int,
     private val end: Int,
     values: Map<String, IrValueDeclaration>,
+    private val adapters: Map<String, Adapter> = emptyMap(),
 ) {
+    /** How a Kotlin value is read into the generated code. */
+    enum class Adapter { NOT_NULL, USHORT, NULLABLE_USHORT }
+
     private val builtIns = plugin.irBuiltIns
     private val finder = plugin.finderForSource(file)
     private val builder = DeclarationIrBuilder(plugin, function.symbol, start, end)
     private val locals = HashMap(values)
 
-    /** The expression computing an inline VEL expression: its statements end with one Return (or Throw). */
-    fun emit(body: Code.Body): IrExpression {
+    /**
+     * The expression computing an inline VEL expression: its statements end with one Return (or Throw).
+     * With [toUShort], a `Char` result (`Z+16`) is returned as the `UShort` the context expects.
+     */
+    fun emit(body: Code.Body, toUShort: Boolean = false): IrExpression {
         val last = body.statements().last()
-        val type = if (last is Code.Return) irType(last.value().type()) else builtIns.nothingType
-        val block = builder.irBlock(resultType = type) { statements(body.statements()) }
+        val resultType = if (last is Code.Return) irType(last.value().type()) else builtIns.nothingType
+        val type = if (toUShort && last is Code.Return) irType(Code.Type.scalar("ushort")) else resultType
+        val block = builder.irBlock(resultType = type) {
+            if (toUShort && last is Code.Return) {
+                statements(body.statements().dropLast(1))
+                +charToUShort(expr(last.value()))
+            } else {
+                statements(body.statements())
+            }
+        }
         if (!body.guarded()) return block
         return IrTryImpl(start, end, type, block, listOf(
             outOfRange("IndexOutOfBoundsException"),
@@ -141,12 +162,11 @@ internal class IrEmitter(
 
     private fun IrBuilderWithScope.expr(e: Code.Expr): IrExpression = when (e) {
         is Code.Lit -> literal(e)
-        is Code.Ref -> irGet(locals[e.name()] ?: error("VEL: unknown generated name ${e.name()}"))
+        is Code.Ref -> read(e)
         is Code.Binary -> binary(e)
         is Code.Neg -> member(e.type(), "unaryMinus", expr(e.operand()))
         is Code.Convert -> convert(expr(e.operand()), e.operand().type().primitive(), e.type().primitive())
-        is Code.Call -> irCall(staticFunction(e.helper().owner(), e.helper().method(), e.args().size, e.args().map { it.type() }))
-            .apply { e.args().forEachIndexed { i, a -> arguments[i] = expr(a) } }
+        is Code.Call -> call(e)
         is Code.Choose -> irIfThenElse(irType(e.type()), expr(e.condition()), expr(e.ifTrue()), expr(e.ifFalse()))
         is Code.Fail -> irCall(staticFunction(VEL_MATH, "error", 0), irType(e.type()))
             .apply { typeArguments[0] = irType(e.type()) }
@@ -159,6 +179,22 @@ internal class IrEmitter(
         is Code.NewArray -> newArray(e.type(), e.lengths())
     }
 
+    private fun IrBuilderWithScope.read(r: Code.Ref): IrExpression {
+        val value: IrExpression = irGet(locals[r.name()] ?: error("VEL: unknown generated name ${r.name()}"))
+        val adapter = adapters[r.name()] ?: return value
+        val nonNull = if (adapter == Adapter.USHORT) value else
+            irCall(builtIns.checkNotNullSymbol, value.type.makeNotNull()).apply {
+                typeArguments[0] = value.type.makeNotNull()
+                arguments[0] = value
+            }
+        return if (adapter == Adapter.NOT_NULL) nonNull
+        else member(Code.Type.INT, "toChar", member(Code.Type.scalar("ushort"), "toInt", nonNull))
+    }
+
+    /** A `Char` result as the `UShort` the context expects. */
+    fun IrBuilderWithScope.charToUShort(value: IrExpression): IrExpression =
+        extension("toUShort", "int", convert(value, "char", "int"))
+
     private fun IrBuilderWithScope.literal(l: Code.Lit): IrExpression {
         val type = irType(l.type())
         return when (val v = l.value()) {
@@ -166,6 +202,9 @@ internal class IrEmitter(
             is BigDecimal -> if (l.type().primitive() == "float") IrConstImpl.float(start, end, type, v.toFloat())
             else IrConstImpl.double(start, end, type, v.toDouble())
             is BigInteger -> when (l.type().primitive()) {
+                "uint" -> extension("toUInt", "int", irInt(v.toInt()))
+                "ulong" -> extension("toULong", "long", irLong(v.toLong()))
+                "ubyte" -> extension("toUByte", "int", irInt(v.toInt()))
                 "int" -> irInt(v.toInt())
                 "long" -> irLong(v.toLong())
                 "short" -> IrConstImpl.short(start, end, type, v.toShort())
@@ -191,13 +230,30 @@ internal class IrEmitter(
             Code.Op.AND -> irIfThenElse(builtIns.booleanType, l, r, irFalse())
             Code.Op.OR -> irIfThenElse(builtIns.booleanType, l, irTrue(), r)
             Code.Op.XOR -> member(operand, "xor", l, r)
-            Code.Op.EQ -> irEquals(l, r)
-            Code.Op.NE -> irNotEquals(l, r)
-            Code.Op.LT -> ordered(builtIns.lessFunByOperandType, operand, l, r)
-            Code.Op.LE -> ordered(builtIns.lessOrEqualFunByOperandType, operand, l, r)
-            Code.Op.GT -> ordered(builtIns.greaterFunByOperandType, operand, l, r)
-            Code.Op.GE -> ordered(builtIns.greaterOrEqualFunByOperandType, operand, l, r)
+            Code.Op.EQ -> if (operand.isUnsigned) unsignedCompare(Code.Op.EQ, operand, l, r) else irEquals(l, r)
+            Code.Op.NE -> if (operand.isUnsigned) unsignedCompare(Code.Op.NE, operand, l, r) else irNotEquals(l, r)
+            else -> if (operand.isUnsigned) unsignedCompare(b.op()!!, operand, l, r) else ordered(b.op()!!, operand, l, r)
         }
+    }
+
+    /** `a.compareTo(b) op 0`: the members of the unsigned classes compare as unsigned. */
+    private fun IrBuilderWithScope.unsignedCompare(op: Code.Op, operand: Code.Type, l: IrExpression, r: IrExpression): IrExpression {
+        val c = member(operand, "compareTo", l, r, resultType = builtIns.intType)
+        return when (op) {
+            Code.Op.EQ -> irEquals(c, irInt(0))
+            Code.Op.NE -> irNotEquals(c, irInt(0))
+            else -> ordered(op, Code.Type.INT, c, irInt(0))
+        }
+    }
+
+    private fun IrBuilderWithScope.ordered(op: Code.Op, operand: Code.Type, l: IrExpression, r: IrExpression): IrExpression {
+        val functions = when (op) {
+            Code.Op.LT -> builtIns.lessFunByOperandType
+            Code.Op.LE -> builtIns.lessOrEqualFunByOperandType
+            Code.Op.GT -> builtIns.greaterFunByOperandType
+            else -> builtIns.greaterOrEqualFunByOperandType
+        }
+        return ordered(functions, operand, l, r)
     }
 
     /** An ordering comparison; Byte and Short are compared as Int. */
@@ -223,6 +279,15 @@ internal class IrEmitter(
     /** A primitive conversion with Java cast semantics, through `Int` where Kotlin has no direct one. */
     private fun IrBuilderWithScope.convert(value: IrExpression, from: String, to: String): IrExpression {
         if (from == to) return value
+        if (JavaTypes.isUnsigned(from)) {
+            // the unsigned classes convert to every numeric type as unsigned values
+            if (to == "char") return member(Code.Type.INT, "toChar", member(Code.Type.scalar(from), "toInt", value))
+            return member(Code.Type.scalar(from), "to" + kotlinName(to), value)
+        }
+        if (JavaTypes.isUnsigned(to)) {
+            val source = if (from == "char") convert(value, "char", "int") else value
+            return extension("to" + kotlinName(to), if (from == "char") "int" else from, source)
+        }
         var v = value
         var f = from
         if (f == "char") {
@@ -245,6 +310,40 @@ internal class IrEmitter(
         }
     }
 
+    private fun IrBuilderWithScope.call(c: Code.Call): IrExpression {
+        val operand = c.args().first().type()
+        if (operand.isUnsigned) {
+            when (c.helper()!!) {
+                Code.Helper.FLOOR_DIV -> return member(operand, "div", expr(c.args()[0]), expr(c.args()[1]))
+                Code.Helper.FLOOR_MOD -> return member(operand, "rem", expr(c.args()[0]), expr(c.args()[1]))
+                Code.Helper.INT_POW -> {
+                    // repeated multiplication on the stored bits wraps like the unsigned type
+                    val bits = JavaTypes.storage(operand.primitive())
+                    val signed = member(operand, "to" + kotlinName(bits), expr(c.args()[0]))
+                    val pow = irCall(staticFunction(c.helper().owner(), c.helper().method(), 2,
+                        listOf(Code.Type.scalar(bits), Code.Type.INT))).apply {
+                        arguments[0] = signed
+                        arguments[1] = expr(c.args()[1])
+                    }
+                    return extension("to" + kotlinName(operand.primitive()), bits, pow)
+                }
+                else -> Unit
+            }
+        }
+        return irCall(staticFunction(c.helper().owner(), c.helper().method(), c.args().size, c.args().map { it.type() }))
+            .apply { c.args().forEachIndexed { i, a -> arguments[i] = expr(a) } }
+    }
+
+    /** A call to an extension function of the kotlin package (`Int.toUInt()`, …) on a primitive receiver. */
+    private fun IrBuilderWithScope.extension(name: String, receiver: String, value: IrExpression): IrExpression {
+        val receiverClass = FqName("kotlin." + kotlinName(receiver))
+        val symbol = finder.findFunctions(CallableId(FqName("kotlin"), Name.identifier(name))).firstOrNull {
+            val params = it.owner.parameters
+            params.size == 1 && params[0].type.classFqName == receiverClass
+        } ?: error("VEL: no extension $receiverClass.$name")
+        return irCall(symbol).apply { arguments[0] = value }
+    }
+
     // ------------------------------------------------------------------------------------------
     // Arrays
     // ------------------------------------------------------------------------------------------
@@ -252,10 +351,11 @@ internal class IrEmitter(
     private fun IrBuilderWithScope.newArray(type: Code.Type, lengths: List<Code.Expr>): IrExpression {
         if (type.rank() == 1) {
             val constructor = finder.findConstructors(arrayClassId(type))
-                .single { it.owner.parameters.size == 1 }
+                .single { it.owner.parameters.size == 1 && it.owner.parameters[0].type.classFqName == FqName("kotlin.Int") }
             return irCallConstructor(constructor, emptyList()).apply { arguments[0] = expr(lengths.first()) }
         }
         // arrays of arrays: VelMath.newArray(descriptor, lengths...) cast to the array type
+        if (type.isUnsigned) error("VEL: arrays of unsigned arrays are not supported by the Kotlin IR backend yet")
         val descriptor = when (type.primitive()) {
             "double" -> 'D'; "float" -> 'F'; "long" -> 'J'; "int" -> 'I'
             "short" -> 'S'; "byte" -> 'B'; "char" -> 'C'; else -> 'Z'
@@ -304,6 +404,11 @@ internal class IrEmitter(
     }
 
     private fun irType(t: Code.Type): IrType {
+        if (t.isUnsigned || t.primitive() == "ushort") {
+            if (t.rank() > 1) error("VEL: arrays of unsigned arrays are not supported by the Kotlin IR backend yet")
+            val name = kotlinName(t.primitive()) + if (t.rank() == 1) "Array" else ""
+            return finder.findClass(ClassId(FqName("kotlin"), Name.identifier(name)))!!.defaultType
+        }
         val scalar = when (t.primitive()) {
             "boolean" -> builtIns.booleanType
             "byte" -> builtIns.byteType
@@ -328,6 +433,10 @@ internal class IrEmitter(
     private fun scalarClassId(primitive: String) = ClassId(FqName("kotlin"), Name.identifier(kotlinName(primitive)))
 
     private fun kotlinName(primitive: String) = when (primitive) {
+        "ubyte" -> "UByte"
+        "ushort" -> "UShort"
+        "uint" -> "UInt"
+        "ulong" -> "ULong"
         "boolean" -> "Boolean"
         "byte" -> "Byte"
         "short" -> "Short"

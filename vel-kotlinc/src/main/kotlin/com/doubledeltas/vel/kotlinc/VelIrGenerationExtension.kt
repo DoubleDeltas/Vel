@@ -47,7 +47,8 @@ import org.jetbrains.kotlin.name.Name
  * resolution.
  *
  * The Kotlin variables visible at the call (parameters, earlier local variables, lambda parameters)
- * of primitive types or arrays of them (sized by `@Dim`) can be used from VEL. The result is
+ * of primitive or unsigned types or arrays of them (sized by `@Dim`) can be used from VEL; a nullable
+ * `T?` is the same VEL type as `T` and is checked when read (kotlin.md 1.3). The result is
  * concretized to the type Kotlin inferred for the call (`val x: Float = vel(...)`).
  */
 class VelIrGenerationExtension : IrGenerationExtension {
@@ -58,8 +59,22 @@ class VelIrGenerationExtension : IrGenerationExtension {
         }
     }
 
-    /** A visible Kotlin value and its VEL type (null when VEL cannot use it). */
-    private class Binding(val declaration: IrValueDeclaration, val type: ConcreteType?)
+    /** A visible Kotlin value, its VEL type (null when VEL cannot use it) and how it is read. */
+    private class Binding(val declaration: IrValueDeclaration, val type: ConcreteType?, val adapter: IrEmitter.Adapter?)
+
+    private object Bindings {
+        fun of(declaration: IrValueDeclaration, type: ConcreteType?): Binding {
+        val t = declaration.type
+        val ushort = t.classFqName?.asString() == "kotlin.UShort"
+        val adapter = when {
+            ushort && t.isMarkedNullable() -> IrEmitter.Adapter.NULLABLE_USHORT
+            ushort -> IrEmitter.Adapter.USHORT
+            t.isMarkedNullable() -> IrEmitter.Adapter.NOT_NULL
+            else -> null
+        }
+        return Binding(declaration, type, adapter)
+        }
+    }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private class InlineRewriter(
@@ -74,7 +89,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
         override fun visitFunction(declaration: IrFunction): IrStatement {
             val params = HashMap<String, Binding>()
             for (p in declaration.parameters) {
-                if (!p.name.isSpecial) params[p.name.asString()] = Binding(p, concreteType(p.type, p.annotations))
+                if (!p.name.isSpecial) params[p.name.asString()] = Bindings.of(p, concreteType(p.type, p.annotations))
             }
             scopes.addLast(params)
             functions.addLast(declaration)
@@ -108,7 +123,7 @@ class VelIrGenerationExtension : IrGenerationExtension {
             val result = super.visitVariable(declaration)
             if (!declaration.name.isSpecial) {
                 scopes.lastOrNull()?.put(declaration.name.asString(),
-                    Binding(declaration, concreteType(declaration.type, declaration.annotations)))
+                    Bindings.of(declaration, concreteType(declaration.type, declaration.annotations)))
             }
             return result
         }
@@ -142,14 +157,17 @@ class VelIrGenerationExtension : IrGenerationExtension {
             for (scope in scopes) visible.putAll(scope) // outer first, inner wins
             val variables = LinkedHashMap<String, ConcreteType>()
             val values = HashMap<String, IrValueDeclaration>()
+            val adapters = HashMap<String, IrEmitter.Adapter>()
             for ((name, binding) in visible) {
                 val type = binding.type ?: continue
                 variables[name] = type
                 values[name] = binding.declaration
+                binding.adapter?.let { adapters[name] = it }
             }
             return try {
-                val body = CodeGenerator.expression(parsed.tree(), variables, concreteType(call.type, emptyList(), target = true))
-                IrEmitter(context, file, function, call.startOffset, call.endOffset, values).emit(body)
+                val body = CodeGenerator.expression(parsed.tree(), variables, concreteType(call.type, emptyList()))
+                IrEmitter(context, file, function, call.startOffset, call.endOffset, values, adapters)
+                    .emit(body, toUShort = call.type.classFqName?.asString() == "kotlin.UShort")
             } catch (e: VelCompileError) {
                 report(arg, VelDiagnostic.error(e.line(), e.column(), e.message).format())
                 null
@@ -164,14 +182,13 @@ class VelIrGenerationExtension : IrGenerationExtension {
         }
 
         /**
-         * The VEL type of a Kotlin type (kotlin.md 1, 2): primitives and their arrays, sized by `@Dim`;
-         * null when VEL cannot use it. For the expected type of a call, nullability (a platform type) is ignored.
+         * The VEL type of a Kotlin type (kotlin.md 1, 2): primitives, unsigned integers and their arrays,
+         * sized by `@Dim`; null when VEL cannot use it. `T?` is the same VEL type as `T` (kotlin.md 1.3).
          */
-        private fun concreteType(type: IrType, annotations: List<IrConstructorCall>, target: Boolean = false): ConcreteType? {
+        private fun concreteType(type: IrType, annotations: List<IrConstructorCall>): ConcreteType? {
             var t = type
             var rank = 0
             while (true) {
-                if (!target && t.isMarkedNullable()) return null
                 val name = t.classFqName?.asString() ?: return null
                 if (name == "kotlin.Array") {
                     t = (t as? IrSimpleType)?.arguments?.singleOrNull()?.typeOrNull ?: return null
@@ -180,9 +197,8 @@ class VelIrGenerationExtension : IrGenerationExtension {
                 }
                 val primitive = PRIMITIVES[name]
                 val array = PRIMITIVE_ARRAYS[name]
-                val element = primitive ?: array ?: return null
+                val scalar = primitive ?: array ?: return null
                 if (array != null) rank++
-                val scalar = JavaTypes.ofPrimitive(element)
                 if (rank == 0) return ConcreteType.scalar(scalar)
                 val dim = annotations.firstOrNull { it.type.classFqName?.asString() == DIM_ANNOTATION }
                 val dims: List<Card>? = dim?.let {
@@ -220,15 +236,26 @@ class VelIrGenerationExtension : IrGenerationExtension {
         )
         const val DIM_ANNOTATION = "com.doubledeltas.vel.Dim"
 
+        private fun primitive(name: String) = JavaTypes.ofPrimitive(name)
+        private fun unsigned(bits: Int) =
+            com.doubledeltas.vel.core.concretization.ScalarType.integer(com.doubledeltas.vel.core.concretization.Resolution.unsigned(bits))
+
+        /** Kotlin scalar types (kotlin.md 1.1, 1.2). */
         private val PRIMITIVES = mapOf(
-            "kotlin.Boolean" to "boolean", "kotlin.Byte" to "byte", "kotlin.Short" to "short",
-            "kotlin.Char" to "char", "kotlin.Int" to "int", "kotlin.Long" to "long",
-            "kotlin.Float" to "float", "kotlin.Double" to "double",
+            "kotlin.Boolean" to primitive("boolean"), "kotlin.Byte" to primitive("byte"), "kotlin.Short" to primitive("short"),
+            "kotlin.Char" to primitive("char"), "kotlin.Int" to primitive("int"), "kotlin.Long" to primitive("long"),
+            "kotlin.Float" to primitive("float"), "kotlin.Double" to primitive("double"),
+            "kotlin.UByte" to unsigned(8), "kotlin.UShort" to unsigned(16), "kotlin.UInt" to unsigned(32),
+            "kotlin.ULong" to unsigned(64),
         )
+
+        /** Kotlin arrays of scalars. `UShortArray` is not supported: `Z+16` is held in `Char`. */
         private val PRIMITIVE_ARRAYS = mapOf(
-            "kotlin.BooleanArray" to "boolean", "kotlin.ByteArray" to "byte", "kotlin.ShortArray" to "short",
-            "kotlin.CharArray" to "char", "kotlin.IntArray" to "int", "kotlin.LongArray" to "long",
-            "kotlin.FloatArray" to "float", "kotlin.DoubleArray" to "double",
+            "kotlin.BooleanArray" to primitive("boolean"), "kotlin.ByteArray" to primitive("byte"),
+            "kotlin.ShortArray" to primitive("short"), "kotlin.CharArray" to primitive("char"),
+            "kotlin.IntArray" to primitive("int"), "kotlin.LongArray" to primitive("long"),
+            "kotlin.FloatArray" to primitive("float"), "kotlin.DoubleArray" to primitive("double"),
+            "kotlin.UByteArray" to unsigned(8), "kotlin.UIntArray" to unsigned(32), "kotlin.ULongArray" to unsigned(64),
         )
     }
 }

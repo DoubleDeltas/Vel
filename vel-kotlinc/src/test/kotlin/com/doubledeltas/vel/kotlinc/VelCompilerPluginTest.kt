@@ -90,6 +90,39 @@ class VelCompilerPluginTest {
     }
 
     @Test
+    fun unsignedAndNullableTypes() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.VelInline.vel
+
+            object Numbers {
+                @JvmStatic fun add(a: UInt, b: UInt): UInt = vel("a + b")
+                @JvmStatic fun ratio(a: ULong, b: ULong): Double = vel("a / b")
+                @JvmStatic fun greater(a: UInt, b: UInt): Int = vel("if a > b then 1 else 0")
+                @JvmStatic fun same(a: UShort): UShort = vel("a")
+                @JvmStatic fun twice(u: UIntArray): UIntArray = vel("2 * u")
+                @JvmStatic fun nullable(x: Double?): Double? = vel("x * 2")
+                @JvmStatic fun checkAdd(): Boolean = add(UInt.MAX_VALUE, 2u) == 1u
+                @JvmStatic fun checkRatio(): Boolean = ratio(ULong.MAX_VALUE, 1uL) == 1.8446744073709552E19
+                @JvmStatic fun checkGreater(): Boolean = greater(UInt.MAX_VALUE, 1u) == 1
+                @JvmStatic fun checkSame(): Boolean = same(UShort.MAX_VALUE) == UShort.MAX_VALUE
+                @JvmStatic fun checkTwice(): Boolean = twice(uintArrayOf(1u, 2147483648u)).contentEquals(uintArrayOf(2u, 0u))
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val numbers = result.classLoader.loadClass("Numbers")
+        for (check in listOf("checkAdd", "checkRatio", "checkGreater", "checkSame", "checkTwice")) {
+            assertEquals(true, numbers.getMethod(check).invoke(null), check)
+        }
+        assertEquals(6.0, numbers.getMethod("nullable", java.lang.Double::class.java).invoke(null, 3.0))
+        val e = assertThrows(java.lang.reflect.InvocationTargetException::class.java) {
+            numbers.getMethod("nullable", java.lang.Double::class.java).invoke(null, null)
+        }
+        assertTrue(e.cause is NullPointerException, e.cause.toString())
+    }
+
+    @Test
     fun typeErrorIsReportedAtLiteral() {
         val result = compile(
             """

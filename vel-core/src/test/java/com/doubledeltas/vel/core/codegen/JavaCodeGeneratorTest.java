@@ -122,6 +122,10 @@ class JavaCodeGeneratorTest {
         assertEquals(27L, run("a ^ 3", "long(a long)", 3L));
         // char - char is Z32 (java.md 7.3)
         assertEquals(-1, run("a - b", "int(a char; b char)", 'a', 'b'));
+        // char + char is Z+32, an unsigned int in the bits of a Java int (java.md 7.3)
+        assertEquals(195, run("a + b", "int(a char; b char)", 'a', 'b'));
+        assertEquals(195L, run("a + b", "long(a char; b char)", 'a', 'b'));
+        assertEquals(97.5, run("(a + b) / 2", "double(a char; b char)", 'a', 'b'));
         // a long result follows the long operand
         assertEquals(1L << 40, run("x * 2", "long(x long)", 1L << 39));
     }

@@ -15,7 +15,10 @@ public final class Code {
     }
 
     /**
-     * A JVM primitive ({@code boolean byte short char int long float double}) or an array of it.
+     * A JVM primitive ({@code boolean byte short char int long float double}), an unsigned integer
+     * stored in the bits of one ({@code ubyte uint ulong}, see {@link JavaTypes#javaName}), or an array of it.
+     * Arithmetic on unsigned values wraps like the signed one; division, remainder, ordering and
+     * conversions are unsigned.
      *
      * @param primitive the element primitive
      * @param rank      the number of array levels; 0 for a scalar
@@ -40,6 +43,10 @@ public final class Code {
 
         public boolean isFloating() {
             return primitive.equals("float") || primitive.equals("double");
+        }
+
+        public boolean isUnsigned() {
+            return JavaTypes.isUnsigned(primitive);
         }
     }
 

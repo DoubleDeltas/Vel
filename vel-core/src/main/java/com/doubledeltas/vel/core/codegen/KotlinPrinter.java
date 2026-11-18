@@ -32,7 +32,8 @@ import com.doubledeltas.vel.core.codegen.Code.Var;
 /**
  * Prints {@link Code} as Kotlin source. Arrays follow kotlin.md 2: a JVM {@code double[]} is
  * {@code DoubleArray}, {@code double[][]} is {@code Array<DoubleArray>}; {@code char} is {@code Char},
- * converted through {@code code} and {@code toChar()}.
+ * converted through {@code code} and {@code toChar()}; the unsigned {@code ubyte uint ulong} are
+ * {@code UByte UInt ULong}, whose operators are already unsigned.
  */
 public final class KotlinPrinter {
 
@@ -40,14 +41,24 @@ public final class KotlinPrinter {
     static final String VEL_EXCEPTION = "com.doubledeltas.vel.VelException";
 
     private final StringBuilder out = new StringBuilder();
+    private final java.util.function.UnaryOperator<String> returned;
     private int indent;
 
-    private KotlinPrinter() {
+    private KotlinPrinter(java.util.function.UnaryOperator<String> returned) {
+        this.returned = returned;
     }
 
     /** A function body (without braces): the result is returned. */
     public static String functionBody(Body body) {
-        KotlinPrinter p = new KotlinPrinter();
+        return functionBody(body, java.util.function.UnaryOperator.identity());
+    }
+
+    /**
+     * A function body (without braces): the result is returned after {@code returned} adapts it to the
+     * declared return type (e.g. {@code Char} to {@code UShort}).
+     */
+    public static String functionBody(Body body, java.util.function.UnaryOperator<String> returned) {
+        KotlinPrinter p = new KotlinPrinter(returned);
         if (!body.guarded()) {
             p.statements(body.statements());
         } else {
@@ -79,6 +90,9 @@ public final class KotlinPrinter {
 
     private static String scalarType(String primitive) {
         return switch (primitive) {
+            case "ubyte" -> "UByte";
+            case "uint" -> "UInt";
+            case "ulong" -> "ULong";
             case "boolean" -> "Boolean";
             case "byte" -> "Byte";
             case "short" -> "Short";
@@ -120,7 +134,7 @@ public final class KotlinPrinter {
                     block(i.otherwise());
                 }
             }
-            case Return r -> line("return " + expr(r.value()));
+            case Return r -> line("return " + returned.apply(expr(r.value())));
             case Throw ignored -> line("throw " + VEL_EXCEPTION + "()");
         }
     }
@@ -139,14 +153,37 @@ public final class KotlinPrinter {
             case Binary b -> "(" + expr(b.left()) + " " + operator(b.op()) + " " + expr(b.right()) + ")";
             case Neg n -> "(-" + expr(n.operand()) + ")";
             case Convert c -> convert(expr(c.operand()), c.operand().type().primitive(), c.type().primitive());
-            case Call c -> c.helper().owner() + "." + c.helper().method() + "("
-                    + c.args().stream().map(KotlinPrinter::expr).collect(Collectors.joining(", ")) + ")";
+            case Call c -> call(c);
             case Choose c -> "(if (" + expr(c.condition()) + ") " + expr(c.ifTrue()) + " else " + expr(c.ifFalse()) + ")";
             case Fail f -> VEL_MATH + ".error<" + type(f.type()) + ">()";
             case Get g -> expr(g.array()) + "[" + expr(g.index()) + "]";
             case Length l -> expr(l.array()) + ".size";
             case NewArray n -> newArray(n.type(), n.lengths());
         };
+    }
+
+    private static String call(Call c) {
+        String operand = c.args().getFirst().type().primitive();
+        List<String> args = c.args().stream().map(KotlinPrinter::expr).toList();
+        if (JavaTypes.isUnsigned(operand)) {
+            switch (c.helper()) {
+                case FLOOR_DIV -> {
+                    return "(" + args.get(0) + " / " + args.get(1) + ")"; // unsigned: floor = truncation
+                }
+                case FLOOR_MOD -> {
+                    return "(" + args.get(0) + " % " + args.get(1) + ")";
+                }
+                case INT_POW -> {
+                    // repeated multiplication on the stored bits wraps like the unsigned type
+                    String bits = JavaTypes.storage(operand);
+                    String kt = scalarType(bits);
+                    return VEL_MATH + ".pow((" + args.get(0) + ").to" + kt + "(), " + args.get(1) + ").to" + scalarType(operand) + "()";
+                }
+                default -> {
+                }
+            }
+        }
+        return c.helper().owner() + "." + c.helper().method() + "(" + String.join(", ", args) + ")";
     }
 
     private static String newArray(Type t, List<Expr> lengths) {
@@ -213,6 +250,9 @@ public final class KotlinPrinter {
             text = switch (p) {
                 case "int" -> v;
                 case "long" -> v + "L";
+                case "uint" -> v + "u";
+                case "ulong" -> v + "uL";
+                case "ubyte" -> "(" + v + "u).toUByte()";
                 case "char" -> "(" + v + ").toChar()";
                 default -> "(" + v + ").to" + scalarType(p) + "()";
             };

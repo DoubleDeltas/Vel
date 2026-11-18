@@ -136,7 +136,9 @@ VEL의 불변성은 VEL 값에만 해당한다. 호출한 Kotlin 함수의 부�
 - `@Vel` 함수(KSP)는 소유 타입마다 `<Owner>Vel` 클래스로 생성된다. 인터페이스는 구현하고, 추상 클래스는 인자 없는 생성자로 상속한다. `@Vel`이 아닌 추상 멤버가 남으면 생성 클래스도 `abstract`다.
 - 인라인 `vel("...")`(컴파일러 플러그인)은 타입 분석이 끝난 IR에서 생성 IR로 바뀐다. VEL에서 쓸 수 있는 이름은 매개변수, 호출보다 앞에 선언된 지역 변수, 람다 매개변수 중 타입이 원시 타입이나 그 배열인 것이다(크기는 `@Dim`). 속성은 아직 쓸 수 없다.
 - 인라인 결과는 Kotlin이 호출에 추론한 타입으로 구체화된다. 예: `val h: Float = vel("g * t^2 / 2")`는 $\mathrm{F}64$로 계산해 `Float`로 바꾼다.
-- 지원하는 타입: `Boolean`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`, 원시 배열(`DoubleArray` 등)과 그 `Array`. nullable 타입과 부호 없는 정수는 아직 지원하지 않는다.
+- 지원하는 타입: `Boolean`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`, 부호 없는 `UByte`, `UShort`, `UInt`, `ULong`(1.2절), 이들의 배열(`DoubleArray`, `UIntArray` 등)과 그 `Array`, 그리고 이 모든 타입의 nullable 타입(1.3절). `UShortArray`와 부호 없는 배열의 `Array`는 아직 지원하지 않는다.
+- nullable 타입 `T?`는 `T`와 같은 대수로 변환한다. 값을 읽을 때 `null`이면 `NullPointerException`을 던진다. `Array<DoubleArray?>`처럼 안쪽이 nullable이면, 그 원소에 접근할 때 같은 예외가 난다.
+- 부호 없는 정수의 연산은 해상도대로 계산한다. $\mathrm{Z}^{+}32$끼리의 덧셈은 $2^{32}$을 법으로 순환하고, 나눗셈·나머지·비교·실수 변환은 부호 없는 값으로 한다. `UShort`($\mathrm{Z}^{+}16$)는 내부에서 `Char`와 같은 표현을 쓴다.
 
 ## 5. 이름
 VEL은 Kotlin의 지역 변수, 매개변수, 속성을 이름 그대로 참조한다.

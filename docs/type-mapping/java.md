@@ -291,6 +291,9 @@ $\sqsubseteq$는 **정확한 변환이 보장되는 방향**이다. 리터럴의
 - **`^` (행렬 거듭제곱)**: 음이 아닌 정수 리터럴 지수는 해상도를 유지한다. 그 외 지수 $B$는 $A \sqcup B \sqcup \mathrm{F}64$다.
 - **`'`, `.'` (전치)**: 해상도를 바꾸지 않는다.
 
+#### 부호 없는 해상도의 표현
+$\mathrm{Z}^{+}16$은 `char`로, $\mathrm{Z}^{+}8$, $\mathrm{Z}^{+}32$, $\mathrm{Z}^{+}64$는 각각 `byte`, `int`, `long`의 비트에 담는다. 덧셈·뺄셈·곱셈은 비트 그대로 계산해 순환하고, 나눗셈·나머지·비교·더 넓은 타입으로의 변환은 부호 없는 값으로 한다(`Integer.divideUnsigned`, `Integer.compareUnsigned`, `Integer.toUnsignedLong` 등). 예: `char` 두 값의 합은 $\mathrm{Z}^{+}32$이다.
+
 #### 대수와 해상도 맞추기
 대수(VEL 타입 시스템 3장)와 해상도를 따로 정한 뒤, 조합 제한(VEL 타입 시스템 2장)을 지키도록 맞춘다.
 - 대수가 $\mathrm{Real}$이나 $\mathrm{Complex}$인데 해상도가 정수 해상도면, 해상도를 $\mathrm{Z}n \to \mathrm{F}64$, $\mathrm{Z}\infty \to \mathrm{D}\infty$로 바꾼다. 예: `j * x`(`x`가 `int`)는 $\mathrm{F}64$로 계산한다.

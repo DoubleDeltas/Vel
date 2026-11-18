@@ -29,8 +29,11 @@ public final class JavaTypes {
     }
 
     /**
-     * The Java primitive that holds a resolution: the narrowest one that represents every value.
-     * Resolutions without a Java primitive (Z∞, Dn, D∞, wider than 64 bits) are not supported yet.
+     * The primitive of {@link Code.Type} that holds a resolution: the narrowest one that represents
+     * every value. {@code Z+8}, {@code Z+32} and {@code Z+64} are the unsigned {@code ubyte}, {@code uint}
+     * and {@code ulong}, stored in the bits of {@code byte}, {@code int} and {@code long} (Kotlin
+     * {@code UByte}, {@code UInt}, {@code ULong}); {@code Z+16} is {@code char}. Resolutions without a
+     * JVM primitive (Z∞, Dn, D∞, wider than 64 bits) are not supported yet.
      */
     public static String javaName(Resolution r) {
         switch (r) {
@@ -41,8 +44,23 @@ public final class JavaTypes {
                 return "int";
             }
             case Resolution.FixedInt f -> {
-                if (!f.signed() && f.bits() == 16) {
-                    return "char";
+                if (!f.signed()) {
+                    switch (f.bits()) {
+                        case 8 -> {
+                            return "ubyte";
+                        }
+                        case 16 -> {
+                            return "char";
+                        }
+                        case 32 -> {
+                            return "uint";
+                        }
+                        case 64 -> {
+                            return "ulong";
+                        }
+                        default -> {
+                        }
+                    }
                 }
                 int bits = f.signed() ? f.bits() : f.bits() + 1;
                 if (bits <= 8) {
@@ -72,9 +90,23 @@ public final class JavaTypes {
         throw new VelTypeException("the resolution " + r + " is not supported by the Java code generator yet");
     }
 
+    /** The JVM primitive storing a primitive of {@link Code.Type}: the unsigned ones are stored in signed bits. */
+    public static String storage(String primitive) {
+        return switch (primitive) {
+            case "ubyte" -> "byte";
+            case "uint" -> "int";
+            case "ulong" -> "long";
+            default -> primitive;
+        };
+    }
+
+    public static boolean isUnsigned(String primitive) {
+        return primitive.equals("ubyte") || primitive.equals("uint") || primitive.equals("ulong");
+    }
+
     /** The boxed class of a primitive name, for generic helpers. */
     static String boxed(String primitive) {
-        return switch (primitive) {
+        return switch (storage(primitive)) {
             case "boolean" -> "Boolean";
             case "byte" -> "Byte";
             case "short" -> "Short";

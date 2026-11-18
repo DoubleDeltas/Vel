@@ -54,7 +54,7 @@ public record ConcreteType(List<Card> dims, ScalarType element) {
 
     /** The Java type, e.g. {@code double}, {@code int[][]}. */
     public String javaName() {
-        return JavaTypes.javaName(element.resolution()) + "[]".repeat(javaRank());
+        return JavaTypes.storage(JavaTypes.javaName(element.resolution())) + "[]".repeat(javaRank());
     }
 
     @Override
