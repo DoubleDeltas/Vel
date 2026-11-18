@@ -2,7 +2,7 @@
 
 에이전트(및 사람)가 작업을 이어받을 때 읽는 요약. 세부 명세는 `docs/`가 원본이며, 이 문서는 **결정 사항과 그 이유, 진행 상태, 남은 과제**를 기록한다.
 
-마지막 갱신: 2026-11-17 (A~D 결정 반영)
+마지막 갱신: 2026-11-18 (구체화기·경계 변환·표현 둘 반영, 진행 상태 정리)
 
 ---
 
@@ -38,19 +38,19 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 
 | 모듈 | 내용 |
 |---|---|
-| `vel-runtime` | `@Vel`(SOURCE 유지), `@Dim(java=…|vel=…)`(CLASS 유지, 배열 크기 지정), `VelInline.vel(String)`(플러그인 미적용 시 예외를 던지는 자리표시자). 사용자 런타임 클래스패스에 올라가는 유일한 모듈 |
-| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. VEL 대수 모델은 `core.type` 패키지(`Card`, `ScalarAlgebra`, `ArrayAlgebra`, `Constant`, `Arithmetic`, `Shapes`, `BinaryOperator`, `TypeRules`), Java 구체화 규칙은 `core.concretization` 패키지(`Resolution`, `ScalarType`, `Operand`, `Promotion`) |
-| `vel-processor` | `VelProcessor`: `@Vel` 메서드의 배치(추상 여부, 소속)와 문법을 검증하고, 오류를 어노테이션 값 위치에 보고 |
-| `vel-javac` | `VelJavacPlugin`: ANALYZE 단계 이후 `VelInline.vel` 호출(정규화된 이름으로 판별)을 찾아 문자열 리터럴 여부와 문법을 검증. `autoStart=true` |
+| `vel-runtime` | `@Vel`(SOURCE 유지), `@Dim(java=…|vel=…)`(CLASS 유지, 배열 크기 지정), `VelInline.vel(String)`(플러그인 미적용 시 예외를 던지는 자리표시자), 생성 코드가 부르는 `VelMath`, `VelException`. 사용자 런타임 클래스패스에 올라가는 유일한 모듈 |
+| `vel-core` | `Vel.g4`, `VelFrontend.parseProgram/parseExpression`, `ParseResult`, `VelDiagnostic`. VEL 대수 모델은 `core.type` 패키지(`Card`, `ScalarAlgebra`, `ArrayAlgebra`, `Constant`, `Arithmetic`, `Shapes`, `BinaryOperator`, `TypeRules`), 구체화 규칙은 `core.concretization` 패키지(`Resolution`, `ScalarType`, `Operand`, `Promotion`), 코드 생성은 `core.codegen`(`CodeGenerator`, `Code`, `Boundary`, `ConcreteType`, `JavaPrinter`, `KotlinPrinter`, `JavaBoundary`, `KotlinBoundary`, `ModelBoundaries`, `JavaCodeGenerator`) |
+| `vel-processor` | `VelProcessor`: `@Vel` 메서드를 검증하고 `<Owner>Vel` Java 구현 클래스를 생성. 오류는 어노테이션 값 위치에 보고 |
+| `vel-javac` | `VelJavacPlugin`: ANALYZE 시작 시 `VelInline.vel` 호출을 생성 코드(switch 식)로 치환. `autoStart=true` |
 | `vel-examples` | B와 C 사용 예. `annotationProcessor`로 processor와 javac 모듈을 연결 |
-| `vel-ksp` | `VelSymbolProcessor`(Kotlin): Kotlin의 `@Vel` 함수 배치(추상 여부, 소속)와 문법을 검증하고 오류를 어노테이션 위치에 보고. `vel-processor`의 Kotlin 대응 |
-| `vel-kotlinc` | Kotlin 컴파일러 플러그인: IR 단계에서 `VelInline.vel` 호출(`CallableId`로 판별)을 찾아 문자열 리터럴 여부(템플릿 불가)와 문법을 검증. 오류는 `IrDiagnosticReporter`로 `VEL_ERROR`/`VEL_WARNING` 진단을 보고 |
+| `vel-ksp` | `VelSymbolProcessor`(Kotlin): `@Vel` 함수를 검증하고 `<Owner>Vel` Kotlin 구현 클래스를 생성. `vel-processor`의 Kotlin 대응 |
+| `vel-kotlinc` | Kotlin 컴파일러 플러그인: IR 단계에서 `VelInline.vel` 호출(`CallableId`로 판별)을 `IrEmitter`가 만든 IR 블록으로 치환. 오류는 `IrDiagnosticReporter`로 `VEL_ERROR`/`VEL_WARNING` 진단을 보고 |
 | `vel-examples-kotlin` | Kotlin B·C 사용 예. `ksp project(':vel-ksp')`, `kotlinCompilerPluginClasspathMain project(':vel-kotlinc')`로 연결 |
 
 - **빌드 메모**:
   - antlr 플러그인이 ANTLR 도구 전체를 `api` 구성으로 흘려보내는 문제는 막아 두었다. 하위 모듈에는 `antlr4-runtime`만 전파된다.
   - 패키지는 `packageName` 속성으로 지정한다. `-package` 인자는 Gradle 9에서 deprecated다.
-- **진행 상태**: 문법 검증과 오류 보고, 그리고 타입 모델(규칙 계산)까지 구현되어 있다. 파스 트리에 타입을 매기는 타입 검사와 코드 생성은 아직 없다. 테스트는 core 58(문법 27, 승격 13, 타입 규칙 18), processor 3, javac 4, ksp 4, kotlinc 5개이며 모두 통과한다.
+- **진행 상태 (2026-11-18)**: 스칼라·배열 식의 구체화기가 Java B/C, Kotlin B/C 네 경로 모두에서 동작한다(타입 검사는 생성기 안에서 `TypeRules`로). 래퍼·`List`·객체 배열·성분 객체·nullable·부호 없는 정수 경계 변환 포함. 미지원 목록은 아래 "Java 구체화기 구현 메모"와 6절. 테스트는 core 96(문법 38, 승격 14, 타입 규칙 29, 생성기 15), processor 7, javac 9, ksp 9, kotlinc 10, examples 2, examples-kotlin 2개이며 모두 통과한다.
 
 ### 배포 (GitHub Packages)
 - 배포 대상 모듈: `vel-runtime`, `vel-core`, `vel-processor`, `vel-javac`, `vel-ksp`, `vel-kotlinc` (예제 모듈 제외). 좌표는 `com.doubledeltas:<모듈>:<버전>`
@@ -140,7 +140,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - **스칼라 대수**: 원자적인 대수 `Bool`, `Int`, `Real`, `Complex`. 코드의 `ScalarAlgebra` enum.
   - **해상도**: `Zn`, `Z+n`, `Z∞`, `Fn`, `Dn`, `D∞`. 코드의 `concretization.Resolution`.
   - **스칼라 타입**: 스칼라 대수에 해상도를 적용한 타입. 예: `⟨Real⟩_F64`(`double`), `⟨Bool⟩`. 배열 타입의 원소는 스칼라 타입이다. 코드의 `concretization.ScalarType`.
-  - **타입**: 대수에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `concretization.ScalarType`(스칼라 대수+해상도). 배열 타입 클래스는 아직 없다(매핑 구현 때 추가). VEL 안의 값은 `type.ArrayAlgebra`(모양+스칼라 대수+상수값).
+  - **타입**: 대수에 해상도를 적용한 것 `⟨K⟩_R`. 예: `⟨Real⟩_F64`(`double`), `⟨Vec(⊤, Real)⟩_F64`(`double[]`). **Java/Kotlin 타입과 대응하는 것은 타입**이다. 코드의 `concretization.ScalarType`(스칼라 대수+해상도), 배열까지는 `codegen.ConcreteType`(모양+스칼라 타입+표현). VEL 안의 값은 `type.ArrayAlgebra`(모양+스칼라 대수+상수값).
   - 예전 문서의 "스칼라 타입(대수)", "대수 = 스칼라 타입" 같은 표현은 쓰지 않는다.
 - **대수의 구성**:
   - 모든 객체는 함수다.
@@ -211,7 +211,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - 조건식은 가지에 문장이 필요하면 `if/else` 블록으로 내서 고른 가지만 평가한다. `error()`는 `VelMath.<T>error()`, `return error()`는 `throw new VelException()`.
 - 범위 밖·음수 인덱스·음수 길이(⊥)는 본문을 `try { … } catch (IndexOutOfBoundsException | NegativeArraySizeException e) { throw VelMath.outOfRange(e); }`로 감싸 `NullPointerException`으로 바꾼다(java.md 2.2).
 - 아직 지원하지 않음(컴파일 오류로 보고): 함수·메서드 호출(`error()` 제외), 멤버 접근, 함수 리터럴, Complex/`j`, 값으로서의 `inf`, Z∞·Dn·D∞, 행렬 나눗셈·행렬 거듭제곱, 분할, Bool 행렬 곱.
-- `vel-runtime`의 `VelMath`: 생성 코드가 부르는 도우미(`pow`, 실수 `floorDiv/truncDiv/floorMod`, `error`, `outOfRange`).
+- `vel-runtime`의 `VelMath`: 생성 코드가 부르는 도우미(`pow`, 실수 `floorDiv/truncDiv/floorMod`, `unsignedToDouble`, `newArray`/`newBoxedArray`/`newArrayLike`, `error`, `outOfRange`).
 - `VelProcessor`: `@Vel` 메서드마다 본문을 생성해 소유 타입별로 `<Owner>Vel`(중첩이면 `Outer_InnerVel`)을 만든다. 인터페이스는 `implements`, 추상 클래스는 `extends`. `@Vel`이 아닌 추상 메서드가 남으면 생성 클래스도 `abstract`. 제네릭 메서드·소유 타입은 아직 거부. 테스트는 생성 코드를 실제로 컴파일·실행한다(`JavaCodeGeneratorTest`, `VelProcessorTest`, `vel-examples`의 `PhysicsTest`).
 
 ### C 방식(`vel("...")`) 구현 메모 (`vel-javac`, 2026-11-18 1차)
@@ -267,19 +267,20 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - [ ] Kotlin 고유 기능의 매핑: `operator fun`을 정의한 사용자 타입, 기본값·이름 있는 인자, `IntRange` 등
 
 - [ ] `@VelConfig` 설계: 최종 정밀도 `MathContext`, 작업 정밀도 등. 형식과 적용 범위(클래스, 메서드, 패키지)
-- [ ] **함수 문법**: 사용자가 추후 직접 설계할 예정. 오버로딩, 가변 인자, 제네릭, `void` 처리, `complex(a, b)` 같은 내장 함수
+- [ ] **함수 대수 구현**: 설계는 5절(함수 정의, 오버로딩 해소, 원소별 적용, `inf`)에서 결정됨. 모델(`Func`), 타입 규칙, 함수 리터럴, 호출, `Math.abs{double}`, `f.(x)`, `Vec(inf, Real, i => x[i])` 생성기가 남음.
+- [ ] **함수 문법의 남은 설계**: 가변 인자, 제네릭, `void` 처리, `complex(a, b)` 같은 내장 함수, `error()` 메시지
+- [ ] 구체화기 미지원: Complex/`j`, Z∞·Dn·D∞(`BigInteger`/`BigDecimal`), 행렬 나눗셈·거듭제곱, 분할, Bool 행렬 곱, 멤버 접근, 제네릭 메서드·소유 타입
+- [ ] Kotlin 인라인(IR): 스칼라가 아닌 원소의 `Array` 결과(`Array<Point>`), 속성 참조
 - [ ] 그 밖의 제어문(반복 등)과 성분별 조건 선택(Bool 배열 조건)
-- [ ] 비교·논리 연산: Bool 리터럴은 생겼지만 Bool 값을 만드는 연산자가 없다.
 - [ ] 명시적 변환(cast)과 타입 표기 문법: `⊑`를 거스르는 대입에 필요
 - [ ] 문법 구현 정리
   - `NUMBER`를 `INT`/`DECIMAL`로 분리(리터럴 해상도 규칙용)
   - 오류 메시지 개선: 인라인에 문장을 쓴 경우, 닫히지 않은 괄호
 - [ ] 의미 분석에서 거부할 것: 인덱스 밖의 `:`·`end`. (`@Dim` 중복은 `DimSpec`, 첨자 밖의 분할점 체인과 `return` 규칙은 `StructureChecker`, 행 길이 불일치는 연결 규칙이 처리함)
-- [ ] 비교·논리 연산의 연산자와 타입 규칙
 - [ ] `java.md` 각주: `Character.codePointAt(char[], 0)` 표현이 부정확하다. `char` 하나의 값은 그냥 `(int) c`다.
 - [ ] 구현 순서 제안
   1. ~~`vel-core` 타입 모델(크기 `⊤`, 브로드캐스팅, 연결 포함)~~ 완료
-  2. ~~Java 매핑(원시 타입과 그 배열, `@Dim`)~~ 1차 완료: `VelProcessor.concreteType`. 래퍼·`List`·`BigInteger`/`BigDecimal`·성분 객체는 아직.
+  2. ~~Java 매핑(원시 타입과 그 배열, `@Dim`)~~ 완료: `ModelBoundaries`. 래퍼·`List`·성분 객체 포함. `BigInteger`/`BigDecimal`만 남음.
   3. ~~타입 검사~~ 생성기 안에서 `TypeRules`로 수행(1차 완료)
   4. ~~B 방식 코드 생성(`<Owner>Vel` 구현 클래스)~~ 1차 완료(2026-11-18)
   5. ~~C 방식 치환(javac 플러그인, 내부 API 사용)~~ 1차 완료(2026-11-18)
