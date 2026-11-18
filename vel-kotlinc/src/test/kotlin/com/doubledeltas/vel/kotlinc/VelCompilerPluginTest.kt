@@ -177,6 +177,27 @@ class VelCompilerPluginTest {
     }
 
     @Test
+    fun staticMethodsAreCalled() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.VelInline.vel
+
+            object Norms {
+                @JvmStatic fun norm(x: Double, y: Double): Double = vel("Math.sqrt(x^2 + y^2)")
+                @JvmStatic fun larger(a: Int, b: Long): Long = vel("Math.max(a, b)")
+                @JvmStatic fun two(): Double = vel("Math.abs{Double}(-2)")
+                @JvmStatic fun firstTwice(v: DoubleArray): DoubleArray = vel("2 * java.util.Arrays.copyOf(v, 2)")
+                @JvmStatic fun check(): Boolean =
+                    norm(3.0, 4.0) == 5.0 && larger(3, 2L) == 3L && two() == 2.0 &&
+                    firstTwice(doubleArrayOf(1.0, 2.0, 3.0)).contentEquals(doubleArrayOf(2.0, 4.0))
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        assertEquals(true, result.classLoader.loadClass("Norms").getMethod("check").invoke(null))
+    }
+
+    @Test
     fun ushortArrays() {
         val result = compile(
             """

@@ -41,6 +41,12 @@ public final class JavaCodeGenerator {
      * objects. Only the parameters the program reads are converted.
      */
     public static String methodBody(VelParser.ProgramContext program, Map<String, Boundary> parameters, Boundary result) {
+        return methodBody(program, parameters, result, MethodLookup.NONE);
+    }
+
+    /** Like {@link #methodBody(VelParser.ProgramContext, Map, Boundary)}, calling the static methods {@code methods} finds. */
+    public static String methodBody(VelParser.ProgramContext program, Map<String, Boundary> parameters, Boundary result,
+                                    MethodLookup methods) {
         Map<String, ConcreteType> types = new java.util.LinkedHashMap<>();
         Map<String, String> codeNames = new java.util.HashMap<>();
         parameters.forEach((name, b) -> {
@@ -49,13 +55,19 @@ public final class JavaCodeGenerator {
                 codeNames.put(name, name + "__v");
             }
         });
-        Code.Body body = CodeGenerator.program(program, types, codeNames, result.type());
+        Code.Body body = CodeGenerator.program(program, types, codeNames, result.type(), methods);
         return JavaPrinter.methodBody(body, prologue(parameters, codeNames, body), writer(result));
     }
 
     /** Like {@link #methodBody(VelParser.ProgramContext, Map, Boundary)} for an inline expression (style C); {@code target} may be null. */
     public static String inlineExpressionAt(VelParser.SingleExpressionContext expression, Map<String, Boundary> variables,
                                             Boundary target) {
+        return inlineExpressionAt(expression, variables, target, MethodLookup.NONE);
+    }
+
+    /** Like {@link #inlineExpressionAt(VelParser.SingleExpressionContext, Map, Boundary)}, calling the static methods {@code methods} finds. */
+    public static String inlineExpressionAt(VelParser.SingleExpressionContext expression, Map<String, Boundary> variables,
+                                            Boundary target, MethodLookup methods) {
         Map<String, ConcreteType> types = new java.util.LinkedHashMap<>();
         Map<String, String> codeNames = new java.util.HashMap<>();
         variables.forEach((name, b) -> {
@@ -64,7 +76,7 @@ public final class JavaCodeGenerator {
                 codeNames.put(name, name + "__v");
             }
         });
-        Code.Body body = CodeGenerator.expression(expression, types, codeNames, target == null ? null : target.type());
+        Code.Body body = CodeGenerator.expression(expression, types, codeNames, target == null ? null : target.type(), methods);
         return JavaPrinter.expression(body, prologue(variables, codeNames, body), target == null ? null : writer(target));
     }
 

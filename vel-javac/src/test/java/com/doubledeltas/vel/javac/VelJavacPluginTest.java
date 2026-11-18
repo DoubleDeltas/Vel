@@ -83,6 +83,28 @@ class VelJavacPluginTest {
     }
 
     @Test
+    void staticMethodsAreCalled() throws Exception {
+        String source = """
+                import static com.doubledeltas.vel.VelInline.vel;
+                public class Norms {
+                    public static double norm(double x, double y) {
+                        return vel("Math.sqrt(x^2 + y^2)");
+                    }
+                    public static long larger(int a, long b) {
+                        return vel("Math.max(a, b)");      // max(long, long)
+                    }
+                    public static double[] firstTwice(double[] v) {
+                        return vel("2 * java.util.Arrays.copyOf(v, 2)");
+                    }
+                }
+                """;
+        assertNoErrors(compile(source));
+        assertEquals(5.0, call("Norms", "norm", 3.0, 4.0));
+        assertEquals(3L, call("Norms", "larger", 3, 2L));
+        assertArrayEquals(new double[] {2, 4}, (double[]) call("Norms", "firstTwice", (Object) new double[] {1, 2, 3}));
+    }
+
+    @Test
     void wrappersListsAndRecords() throws Exception {
         String source = """
                 import static com.doubledeltas.vel.VelInline.vel;

@@ -61,6 +61,53 @@ class VelProcessorTest {
     }
 
     @Test
+    void staticMethodsAreCalled() throws Exception {
+        var errors = compile("""
+                import com.doubledeltas.vel.Vel;
+                interface Norms {
+                    @Vel("Math.sqrt(x^2 + y^2)")
+                    double norm(double x, double y);
+                    @Vel("Math.abs(n) + Math.abs{double}(-2)")
+                    double absSum(int n);
+                    @Vel("2 * java.util.Arrays.copyOf(v, 2)")
+                    double[] firstTwice(double[] v);
+                }
+                """);
+        assertTrue(errors.isEmpty(), errors::toString);
+        try (var loader = new URLClassLoader(new java.net.URL[] {out.toUri().toURL()}, getClass().getClassLoader())) {
+            var constructor = loader.loadClass("NormsVel").getDeclaredConstructor();
+            constructor.setAccessible(true);
+            Object norms = constructor.newInstance();
+            Class<?> type = norms.getClass();
+            java.util.function.BiFunction<String, Object[], Object> call = (name, args) -> {
+                for (var m : type.getDeclaredMethods()) {
+                    if (m.getName().equals(name)) {
+                        m.setAccessible(true);
+                        try {
+                            return m.invoke(norms, args);
+                        } catch (ReflectiveOperationException e) {
+                            throw new AssertionError(e);
+                        }
+                    }
+                }
+                throw new AssertionError(name);
+            };
+            assertEquals(5.0, call.apply("norm", new Object[] {3.0, 4.0}));
+            assertEquals(9.0, call.apply("absSum", new Object[] {-7}));
+            assertArrayEquals(new double[] {2, 4}, (double[]) call.apply("firstTwice", new Object[] {new double[] {1, 2, 3}}));
+        }
+        var unknown = compile("""
+                import com.doubledeltas.vel.Vel;
+                interface Bad {
+                    @Vel("Math.abs(b)")
+                    double f(boolean b);
+                }
+                """);
+        assertTrue(unknown.stream().anyMatch(d -> d.getMessage(null).contains("no overload of Math.abs for (boolean)")),
+                unknown::toString);
+    }
+
+    @Test
     void wrappersListsAndComponentObjects() throws Exception {
         var errors = compile("""
                 import com.doubledeltas.vel.Vel;

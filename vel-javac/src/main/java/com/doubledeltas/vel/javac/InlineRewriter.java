@@ -17,6 +17,7 @@ import com.doubledeltas.vel.core.VelDiagnostic;
 import com.doubledeltas.vel.core.VelFrontend;
 import com.doubledeltas.vel.core.codegen.Boundary;
 import com.doubledeltas.vel.core.codegen.ModelBoundaries;
+import com.doubledeltas.vel.core.codegen.ModelMethods;
 import com.doubledeltas.vel.core.codegen.JavaCodeGenerator;
 import com.doubledeltas.vel.core.codegen.JavaTypes;
 import com.doubledeltas.vel.core.codegen.VelCompileError;
@@ -62,6 +63,7 @@ import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.comp.AttrContext;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.model.JavacElements;
 import com.sun.tools.javac.model.JavacTypes;
 import com.sun.tools.javac.tree.TreeCopier;
 import com.sun.tools.javac.tree.TreeMaker;
@@ -303,7 +305,8 @@ final class InlineRewriter extends TreeTranslator {
         }
         String code;
         try {
-            code = JavaCodeGenerator.inlineExpressionAt(parsed.tree(), visible(), targets.get(call));
+            code = JavaCodeGenerator.inlineExpressionAt(parsed.tree(), visible(), targets.get(call),
+                    new ModelMethods(JavacElements.instance(context), JavacTypes.instance(context)));
         } catch (VelCompileError e) {
             error(lit, VelDiagnostic.error(e.line(), e.column(), e.getMessage()).format());
             return null;

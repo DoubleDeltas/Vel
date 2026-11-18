@@ -185,6 +185,8 @@ internal class IrEmitter(
         is Code.Neg -> member(e.type(), "unaryMinus", expr(e.operand()))
         is Code.Convert -> convert(expr(e.operand()), e.operand().type().primitive(), e.type().primitive())
         is Code.Call -> call(e)
+        is Code.Invoke -> irCall(staticFunction(e.owner(), e.method(), e.params().size, e.params()))
+            .apply { e.args().forEachIndexed { i, a -> arguments[i] = expr(a) } }
         is Code.Choose -> irIfThenElse(irType(e.type()), expr(e.condition()), expr(e.ifTrue()), expr(e.ifFalse()))
         is Code.Fail -> irCall(staticFunction(VEL_MATH, "error", 0), irType(e.type()))
             .apply { typeArguments[0] = irType(e.type()) }

@@ -66,8 +66,11 @@ import com.doubledeltas.vel.parser.VelParser;
  * Algebras are checked with {@link TypeRules}, resolutions are decided with {@link Promotion}, and
  * arrays become loops over JVM arrays laid out as in java.md 2 (VEL {@code Mat(n, m)} is {@code a[m][n]}).
  * <p>
- * Not supported yet (a {@link VelCompileError} is reported): functions and method calls (except
- * {@code error()}), member access, Complex and {@code j}, {@code inf} as a value, resolutions without a
+ * Static methods of target-language classes are called through {@link MethodLookup} ({@code Math.abs(x)},
+ * java.md 3.1).
+ * <p>
+ * Not supported yet (a {@link VelCompileError} is reported): VEL functions, instance methods, method
+ * references, element-wise calls, member access, Complex and {@code j}, {@code inf} as a value, resolutions without a
  * JVM primitive (Z∞, Dn, D∞), matrix division and matrix power, partitions, Bool matrix products.
  */
 public final class CodeGenerator {
@@ -122,6 +125,8 @@ public final class CodeGenerator {
     private final Deque<Expr> ends = new ArrayDeque<>();
     /** The type the result is concretized to; null to keep the value's own type. */
     private final ConcreteType returnType;
+    /** The static methods VEL can call ({@code Math.abs(x)}, java.md 3). */
+    private MethodLookup methods = MethodLookup.NONE;
 
     private CodeGenerator(Map<String, ConcreteType> parameters, Map<String, String> codeNames, ConcreteType returnType) {
         this.returnType = returnType;
@@ -152,7 +157,14 @@ public final class CodeGenerator {
      */
     public static Body program(VelParser.ProgramContext program, Map<String, ConcreteType> parameters,
                                Map<String, String> codeNames, ConcreteType returnType) {
+        return program(program, parameters, codeNames, returnType, MethodLookup.NONE);
+    }
+
+    /** Like {@link #program(VelParser.ProgramContext, Map, Map, ConcreteType)}, calling the static methods {@code methods} finds. */
+    public static Body program(VelParser.ProgramContext program, Map<String, ConcreteType> parameters,
+                               Map<String, String> codeNames, ConcreteType returnType, MethodLookup methods) {
         CodeGenerator g = new CodeGenerator(parameters, codeNames, returnType);
+        g.methods = methods;
         g.program(program);
         return new Body(List.copyOf(g.out), g.guarded, Set.copyOf(g.used));
     }
@@ -172,7 +184,14 @@ public final class CodeGenerator {
     /** Like {@link #expression(VelParser.SingleExpressionContext, Map, ConcreteType)} with converted locals (see {@link #program}). */
     public static Body expression(VelParser.SingleExpressionContext expression, Map<String, ConcreteType> variables,
                                   Map<String, String> codeNames, ConcreteType target) {
+        return expression(expression, variables, codeNames, target, MethodLookup.NONE);
+    }
+
+    /** Like {@link #expression(VelParser.SingleExpressionContext, Map, Map, ConcreteType)}, calling the static methods {@code methods} finds. */
+    public static Body expression(VelParser.SingleExpressionContext expression, Map<String, ConcreteType> variables,
+                                  Map<String, String> codeNames, ConcreteType target, MethodLookup methods) {
         CodeGenerator g = new CodeGenerator(variables, codeNames, target);
+        g.methods = methods;
         g.located(expression.expr(), () -> {
             g.returnValue(g.expr(expression.expr()));
             return null;
@@ -372,7 +391,7 @@ public final class CodeGenerator {
             case VelParser.RangeExprContext r -> rangeValue(expr(r.expr(0)), expr(r.expr(1)));
             case VelParser.CompareExprContext c -> compare(c.op.getText(), expr(c.expr(0)), expr(c.expr(1)));
             case VelParser.ConditionalExprContext c -> conditional(c);
-            case VelParser.MethodCallExprContext ignored -> throw unsupported("method calls");
+            case VelParser.MethodCallExprContext c -> methodCall(c);
             case VelParser.BroadcastMethodCallExprContext ignored -> throw unsupported("method calls");
             case VelParser.MethodRefExprContext ignored -> throw unsupported("method references");
             case VelParser.MemberExprContext ignored -> throw unsupported("member access");
@@ -417,6 +436,205 @@ public final class CodeGenerator {
             return new Val(ArrayAlgebra.scalar(ScalarAlgebra.NOT), null, null, false);
         }
         throw unsupported("function calls");
+    }
+
+    // ---- static method calls (java.md 3, 3.1) -------------------------------------------------
+
+    /** {@code T.foo(x)}: a static method of a target-language class, one overload chosen. */
+    private Val methodCall(VelParser.MethodCallExprContext c) {
+        String owner = className(c.expr());
+        if (owner == null) {
+            throw unsupported("instance method calls");
+        }
+        String name = c.ID().getText();
+        List<MethodLookup.Method> candidates = methods.staticMethods(owner, name);
+        if (candidates == null) {
+            throw new VelTypeException("unknown class " + owner);
+        }
+        if (candidates.isEmpty()) {
+            throw new VelTypeException("no static method " + owner + "." + name);
+        }
+        List<Val> args = c.arguments() == null ? List.of() : c.arguments().expr().stream().map(this::expr).toList();
+        MethodLookup.Method m = c.signature() != null
+                ? bySignature(candidates, c.signature(), owner + "." + name)
+                : mostSpecific(candidates, args, owner + "." + name);
+        return invoke(m, args);
+    }
+
+    /** The class a receiver names ({@code Math}, {@code java.lang.Math}), or null when it is a value. */
+    private String className(VelParser.ExprContext e) {
+        return switch (e) {
+            case VelParser.PrimaryExprContext p when p.primary() instanceof VelParser.IdentifierContext i ->
+                    locals.containsKey(i.getText()) || params.containsKey(i.getText()) ? null : i.getText();
+            case VelParser.MemberExprContext m -> {
+                String outer = className(m.expr());
+                yield outer == null ? null : outer + "." + m.ID().getText();
+            }
+            default -> null;
+        };
+    }
+
+    /** The overload a signature {@code {…}} names: written types match erased, simple names their last part. */
+    private static MethodLookup.Method bySignature(List<MethodLookup.Method> candidates, VelParser.SignatureContext s,
+                                                   String what) {
+        List<String> written = s.typeName().stream().map(t -> erase(t.getText())).toList();
+        List<MethodLookup.Method> found = candidates.stream().filter(m -> m.params().size() == written.size()
+                && java.util.stream.IntStream.range(0, written.size())
+                        .allMatch(i -> sameType(written.get(i), m.params().get(i).typeName()))).toList();
+        if (found.size() != 1) {
+            throw new VelTypeException((found.isEmpty() ? "no overload " : "ambiguous overload ") + what
+                    + "{" + String.join(", ", written) + "}");
+        }
+        return found.getFirst();
+    }
+
+    private static boolean sameType(String written, String declared) {
+        declared = erase(declared);
+        if (written.contains(".")) {
+            return written.equals(declared);
+        }
+        return written.equals(declared.substring(declared.lastIndexOf('.', declared.indexOf('[') < 0
+                ? declared.length() - 1 : declared.indexOf('[')) + 1));
+    }
+
+    /** A type name without its type arguments: {@code List<Double>} is {@code List}. */
+    private static String erase(String type) {
+        StringBuilder b = new StringBuilder();
+        int depth = 0;
+        for (char ch : type.toCharArray()) {
+            if (ch == '<') {
+                depth++;
+            } else if (ch == '>') {
+                depth--;
+            } else if (depth == 0 && !Character.isWhitespace(ch)) {
+                b.append(ch);
+            }
+        }
+        return b.toString();
+    }
+
+    /**
+     * The overload a call without a signature takes (JLS 15.12.2): the applicable ones by identity and
+     * widening primitive conversion, then the most specific. Arguments take their own resolution; a
+     * constant takes its default (java.md 7.6), so {@code Math.abs(-2)} calls {@code abs(int)}.
+     */
+    private static MethodLookup.Method mostSpecific(List<MethodLookup.Method> candidates, List<Val> args, String what) {
+        List<Type> types = args.stream().map(CodeGenerator::argumentType).toList();
+        List<MethodLookup.Method> applicable = candidates.stream().filter(m -> m.params().size() == types.size()
+                && java.util.stream.IntStream.range(0, types.size()).allMatch(i -> {
+                    ConcreteType p = m.params().get(i).type();
+                    return p != null && types.get(i) != null && convertible(types.get(i), codeType(p));
+                })).toList();
+        List<MethodLookup.Method> best = applicable.stream().filter(m -> applicable.stream().allMatch(o -> o == m
+                || java.util.stream.IntStream.range(0, types.size()).allMatch(i ->
+                        convertible(codeType(m.params().get(i).type()), codeType(o.params().get(i).type()))))).toList();
+        if (best.size() != 1) {
+            String described = types.stream().map(t -> t == null ? "?" : t.primitive() + "[]".repeat(t.rank()))
+                    .collect(java.util.stream.Collectors.joining(", "));
+            throw new VelTypeException((applicable.isEmpty() ? "no overload of " : "ambiguous call to ") + what
+                    + " for (" + described + "); choose one with a signature, e.g. " + what + "{double}");
+        }
+        return best.getFirst();
+    }
+
+    /** The type an argument has in overload resolution; null for Not. */
+    private static Type argumentType(Val v) {
+        if (v.isNot()) {
+            return null;
+        }
+        if (v.isConstant()) {
+            return Type.scalar(JavaTypes.javaName(Promotion.defaultOf(v.alg().constant())));
+        }
+        return v.isScalar() ? Type.scalar(v.code().type().primitive()) : v.code().type();
+    }
+
+    private static Type codeType(ConcreteType t) {
+        return new Type(t.primitive(), t.javaRank());
+    }
+
+    /** Identity, or widening primitive conversion between scalars (JLS 5.1.2). */
+    private static boolean convertible(Type from, Type to) {
+        if (from.equals(to)) {
+            return true;
+        }
+        if (from.rank() > 0 || to.rank() > 0) {
+            return false;
+        }
+        List<String> wider = switch (from.primitive()) {
+            case "byte" -> List.of("short", "int", "long", "float", "double");
+            case "short", "char" -> List.of("int", "long", "float", "double");
+            case "int" -> List.of("long", "float", "double");
+            case "long" -> List.of("float", "double");
+            case "float" -> List.of("double");
+            default -> List.of();
+        };
+        return wider.contains(to.primitive());
+    }
+
+    /** Whether a value's elements may be passed as {@code p}'s: ⊑ (java.md 7.2), or a Java widening conversion. */
+    private static boolean widens(Val a, ConcreteType p) {
+        return Promotion.isRepresentable(a.res(), p.element().resolution())
+                || convertible(Type.scalar(a.code().type().primitive()), Type.scalar(p.primitive()));
+    }
+
+    /** The call, each argument converted to its parameter's type. */
+    private Val invoke(MethodLookup.Method m, List<Val> args) {
+        String what = m.owner() + "." + m.name();
+        if (m.result() == null) {
+            throw new VelTypeException(what + " does not return a value VEL can use");
+        }
+        List<Expr> code = new ArrayList<>();
+        List<Type> paramTypes = new ArrayList<>();
+        boolean fails = false;
+        for (int i = 0; i < args.size(); i++) {
+            Val a = args.get(i);
+            ConcreteType p = m.params().get(i).type();
+            if (p == null) {
+                throw new VelTypeException("cannot pass a VEL value as the parameter " + m.params().get(i).typeName()
+                        + " of " + what);
+            }
+            paramTypes.add(codeType(p));
+            fails |= a.isNot();
+            if (a.isNot()) {
+                continue;
+            }
+            if (!a.alg().element().arithmetic().isSubtypeOf(p.element().algebra().arithmetic())
+                    || (a.alg().element() == ScalarAlgebra.BOOL) != (p.element().algebra() == ScalarAlgebra.BOOL)) {
+                throw new VelTypeException("cannot pass " + a.alg() + " as " + p + " to " + what);
+            }
+            if (p.isScalar()) {
+                if (!a.isScalar()) {
+                    throw new VelTypeException("cannot pass " + a.alg() + " as the scalar " + p + " to " + what);
+                }
+                if (a.isConstant() ? p.element().resolution().isInteger()
+                        && !Promotion.isRepresentable(a.alg().constant(), p.element().resolution())
+                        : !widens(a, p)) {
+                    throw new VelTypeException("cannot pass " + (a.isConstant() ? a.alg().constant() : a.res())
+                            + " as " + p + " to " + what + " without losing values");
+                }
+                code.add(convTo(a, p.primitive()));
+                continue;
+            }
+            if (a.isScalar()) {
+                throw new VelTypeException("cannot pass the scalar " + a.alg() + " as " + p + " to " + what);
+            }
+            if (!widens(a, p)) {
+                throw new VelTypeException("cannot pass " + a.res() + " as " + p + " to " + what + " without losing values");
+            }
+            checkShape(a.alg().dims(), p.dims(), "cannot pass " + a.alg() + " as " + p + " to " + what + ":");
+            if (JavaTypes.javaRank(a.alg().dims()) != p.javaRank()) {
+                throw new VelTypeException("cannot pass " + a.alg() + " as " + p + " to " + what
+                        + ": the orientation differs (a row and a column?); transpose it with '");
+            }
+            code.add(arrayCode(a, p.element().resolution(), p.primitive(), false));
+        }
+        if (fails) {
+            return new Val(ArrayAlgebra.scalar(ScalarAlgebra.NOT), null, null, false);
+        }
+        ConcreteType r = m.result();
+        // called once, where it is written; an array it returns may be shared, so it is copied before it leaves VEL
+        Expr call = temp(new Code.Invoke(m.owner(), m.name(), paramTypes, code, codeType(r)));
+        return new Val(r.algebra(), r.element().resolution(), call, !r.isScalar());
     }
 
     /** A plain name: a VEL variable, then a predeclared name, then a target-language variable (java.md 4). */

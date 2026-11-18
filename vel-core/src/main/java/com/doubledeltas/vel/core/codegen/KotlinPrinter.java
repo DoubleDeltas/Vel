@@ -188,6 +188,8 @@ public final class KotlinPrinter {
             case Neg n -> "(-" + expr(n.operand()) + ")";
             case Convert c -> convert(expr(c.operand()), c.operand().type().primitive(), c.type().primitive());
             case Call c -> call(c);
+            case Code.Invoke i -> i.owner() + "." + i.method() + i.args().stream().map(KotlinPrinter::expr)
+                    .collect(Collectors.joining(", ", "(", ")"));
             case Choose c -> "(if (" + expr(c.condition()) + ") " + expr(c.ifTrue()) + " else " + expr(c.ifFalse()) + ")";
             case Fail f -> VEL_MATH + ".error<" + type(f.type()) + ">()";
             case Get g -> expr(g.array()) + "[" + expr(g.index()) + "]";

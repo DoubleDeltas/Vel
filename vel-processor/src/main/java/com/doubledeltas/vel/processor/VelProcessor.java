@@ -32,6 +32,7 @@ import com.doubledeltas.vel.core.VelDiagnostic;
 import com.doubledeltas.vel.core.VelFrontend;
 import com.doubledeltas.vel.core.codegen.Boundary;
 import com.doubledeltas.vel.core.codegen.ModelBoundaries;
+import com.doubledeltas.vel.core.codegen.ModelMethods;
 import com.doubledeltas.vel.core.codegen.JavaCodeGenerator;
 import com.doubledeltas.vel.core.codegen.JavaTypes;
 import com.doubledeltas.vel.core.codegen.VelCompileError;
@@ -132,7 +133,8 @@ public final class VelProcessor extends AbstractProcessor {
                 signature.append(p.asType()).append(' ').append(p.getSimpleName());
             }
             Boundary returnType = boundaries.of(method.getReturnType(), method);
-            String body = JavaCodeGenerator.methodBody(result.tree(), params, returnType);
+            String body = JavaCodeGenerator.methodBody(result.tree(), params, returnType,
+                    new ModelMethods(processingEnv.getElementUtils(), processingEnv.getTypeUtils()));
 
             StringBuilder code = new StringBuilder();
             code.append("    @Override\n    ");

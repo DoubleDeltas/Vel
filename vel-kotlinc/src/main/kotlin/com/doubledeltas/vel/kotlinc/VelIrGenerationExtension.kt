@@ -6,6 +6,7 @@ import com.doubledeltas.vel.core.codegen.Boundary
 import com.doubledeltas.vel.core.codegen.CodeGenerator
 import com.doubledeltas.vel.core.codegen.ConcreteType
 import com.doubledeltas.vel.core.codegen.JavaTypes
+import com.doubledeltas.vel.core.codegen.MethodLookup
 import com.doubledeltas.vel.core.codegen.VelCompileError
 import com.doubledeltas.vel.core.type.Card
 import com.doubledeltas.vel.core.type.DimSpec
@@ -36,6 +37,10 @@ import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classifierOrNull
 import org.jetbrains.kotlin.ir.types.isMarkedNullable
+import org.jetbrains.kotlin.ir.types.makeNotNull
+import org.jetbrains.kotlin.ir.util.isStatic
+import org.jetbrains.kotlin.ir.util.kotlinFqName
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.types.typeOrNull
 import org.jetbrains.kotlin.ir.util.callableId
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
@@ -163,7 +168,8 @@ class VelIrGenerationExtension : IrGenerationExtension {
             }
             return try {
                 val target = boundary(call.type, emptyList())
-                val body = CodeGenerator.expression(parsed.tree(), variables, codeNames, target?.type())
+                val body = CodeGenerator.expression(parsed.tree(), variables, codeNames, target?.type(),
+                    MethodLookup(::staticMethods))
                 val reads = body.used().filter { it in codeNames }.map {
                     IrEmitter.Read(visible.getValue(it).type!!, visible.getValue(it).declaration, codeNames.getValue(it))
                 }
@@ -203,6 +209,41 @@ class VelIrGenerationExtension : IrGenerationExtension {
                 null
             }
         }
+
+        /**
+         * The public static methods of a Java class named in VEL by its qualified name or, for
+         * `java.lang`, its simple name. The signature `{…}` names parameters by Kotlin types.
+         */
+        private fun staticMethods(owner: String, name: String): List<MethodLookup.Method>? {
+            val finder = context.finderForSource(file)
+            val cls = (if ('.' in owner) finder.findClass(ClassId.topLevel(FqName(owner))) else null)
+                ?: finder.findClass(ClassId.topLevel(FqName("java.lang.$owner")))
+                ?: return null
+            return cls.owner.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrSimpleFunction>()
+                .filter {
+                    it.name.asString() == name && it.isStatic && it.visibility == DescriptorVisibilities.PUBLIC
+                            && it.typeParameters.isEmpty() && it.parameters.none { p -> p.varargElementType != null }
+                }
+                .map { f ->
+                    MethodLookup.Method(
+                        cls.owner.kotlinFqName.asString(), name,
+                        f.parameters.map { p -> MethodLookup.Param(render(p.type), direct(p.type)) },
+                        direct(f.returnType),
+                    )
+                }
+        }
+
+        /** The VEL type of a primitive or an array of one, or null. */
+        private fun direct(t: IrType): ConcreteType? =
+            try {
+                (boundaryOf(t.makeNotNull(), nested = false) as? Boundary.Direct)?.type()
+            } catch (e: VelTypeException) {
+                null
+            }
+
+        /** A Kotlin type as a signature names it: the qualified class name with `?` when nullable. */
+        private fun render(t: IrType): String =
+            (t.classFqName?.asString() ?: t.toString()) + if (t.isMarkedNullable()) "?" else ""
 
         private fun boundaryOf(type: IrType, nested: Boolean): Boundary? {
             val name = type.classFqName?.asString() ?: return null

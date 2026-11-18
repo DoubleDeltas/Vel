@@ -190,6 +190,33 @@ class VelSymbolProcessorTest {
     }
 
     @Test
+    fun staticMethodsAreCalled() {
+        val result = compile(
+            """
+            import com.doubledeltas.vel.Vel
+            interface Norms {
+                @Vel("Math.sqrt(x^2 + y^2)")
+                fun norm(x: Double, y: Double): Double
+                @Vel("Math.max(a, b)")                 // max(long, long)
+                fun larger(a: Int, b: Long): Long
+                @Vel("Math.abs{Double}(-2)")
+                fun two(): Double
+                @Vel("2 * java.util.Arrays.copyOf(v, 2)")
+                fun firstTwice(v: DoubleArray): DoubleArray
+            }
+            """
+        )
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val type = result.classLoader.loadClass("NormsVel")
+        val norms = type.getConstructor().newInstance()
+        fun call(name: String, vararg args: Any?): Any? = type.methods.single { it.name == name }.invoke(norms, *args)
+        assertEquals(5.0, call("norm", 3.0, 4.0))
+        assertEquals(3L, call("larger", 3, 2L))
+        assertEquals(2.0, call("two"))
+        assertArrayEquals(doubleArrayOf(2.0, 4.0), call("firstTwice", doubleArrayOf(1.0, 2.0, 3.0)) as DoubleArray)
+    }
+
+    @Test
     fun ushortArrays() {
         val result = compile(
             """

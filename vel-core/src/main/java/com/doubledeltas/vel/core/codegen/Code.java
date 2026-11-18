@@ -55,7 +55,7 @@ public final class Code {
     // Expressions
     // ------------------------------------------------------------------------------------------
 
-    public sealed interface Expr permits Lit, Ref, Binary, Neg, Convert, Call, Choose, Fail, Get, Length, NewArray {
+    public sealed interface Expr permits Lit, Ref, Binary, Neg, Convert, Call, Invoke, Choose, Fail, Get, Length, NewArray {
         Type type();
     }
 
@@ -123,6 +123,15 @@ public final class Code {
     }
 
     public record Call(Helper helper, List<Expr> args, Type type) implements Expr {
+    }
+
+    /**
+     * A call to a static method of a user-visible class ({@code java.lang.Math.abs(x)}, java.md 3).
+     *
+     * @param owner  the qualified class name
+     * @param params the parameter types, to tell overloads apart; the arguments have exactly these types
+     */
+    public record Invoke(String owner, String method, List<Type> params, List<Expr> args, Type type) implements Expr {
     }
 
     /** {@code c ? a : b}: only the chosen operand is evaluated. */

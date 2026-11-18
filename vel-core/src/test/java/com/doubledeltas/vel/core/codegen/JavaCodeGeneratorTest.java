@@ -57,6 +57,40 @@ class JavaCodeGeneratorTest {
         return ConcreteType.javaArray(element, rank, dims);
     }
 
+    /** Public static methods found by reflection, as the hosts find them in their models. */
+    private static List<MethodLookup.Method> reflected(String owner, String name) {
+        Class<?> c;
+        try {
+            c = Class.forName(owner.contains(".") ? owner : "java.lang." + owner);
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+        List<MethodLookup.Method> found = new ArrayList<>();
+        for (Method m : c.getMethods()) {
+            if (m.getName().equals(name) && java.lang.reflect.Modifier.isStatic(m.getModifiers()) && !m.isVarArgs()) {
+                List<MethodLookup.Param> params = new ArrayList<>();
+                for (Class<?> p : m.getParameterTypes()) {
+                    params.add(new MethodLookup.Param(p.getCanonicalName(), direct(p)));
+                }
+                found.add(new MethodLookup.Method(c.getName(), name, params, direct(m.getReturnType())));
+            }
+        }
+        return found;
+    }
+
+    private static ConcreteType direct(Class<?> c) {
+        int rank = 0;
+        while (c.isArray()) {
+            c = c.getComponentType();
+            rank++;
+        }
+        var element = c.isPrimitive() ? JavaTypes.ofPrimitive(c.getName()) : null;
+        if (element == null) {
+            return null;
+        }
+        return rank == 0 ? ConcreteType.scalar(element) : ConcreteType.javaArray(element, rank, null);
+    }
+
     /** {@code signature} is "ret(name type, name type, …)". */
     private Object run(String vel, String signature, Object... args) throws Exception {
         String ret = signature.substring(0, signature.indexOf('('));
@@ -77,7 +111,10 @@ class JavaCodeGeneratorTest {
         var parsed = VelFrontend.parseProgram(vel);
         assertTrue(parsed.diagnostics().isEmpty(), parsed.diagnostics()::toString);
         ConcreteType returnType = type(ret);
-        String body = JavaCodeGenerator.methodBody(parsed.tree(), params, returnType);
+        Map<String, Boundary> boundaries = new LinkedHashMap<>();
+        params.forEach((n, t) -> boundaries.put(n, new Boundary.Direct(t.dims(), t.element())));
+        String body = JavaCodeGenerator.methodBody(parsed.tree(), boundaries,
+                new Boundary.Direct(returnType.dims(), returnType.element()), JavaCodeGeneratorTest::reflected);
         String name = "Gen" + classes++;
         String source = "public class " + name + " {\n public static " + returnType.javaName() + " f(" + javaParams
                 + ") {\n" + body + "}\n}\n";
@@ -275,6 +312,37 @@ class JavaCodeGeneratorTest {
     void conditionalOnArraysEvaluatesOnlyTheChosenBranch() throws Exception {
         assertArrayEquals(new double[] {2, 4}, (double[]) run("if c then 2 * v else error()",
                 "double[](c boolean; v double[])", true, new double[] {1, 2}));
+    }
+
+    // ---- static methods (java.md 3.1) -------------------------------------------------------------
+
+    @Test
+    void staticMethodsAreResolvedLikeJava() throws Exception {
+        assertEquals(5.0, run("Math.sqrt(x^2 + y^2)", "double(x double; y double)", 3.0, 4.0));
+        assertEquals(5.0, run("java.lang.Math.hypot(x, y)", "double(x double; y double)", 3.0, 4.0));
+        // abs(int) for an int argument and for the constant -2 (default Z32), abs(double) when chosen
+        assertEquals(7, run("Math.abs(n)", "int(n int)", -7));
+        assertEquals(2.5, run("Math.abs(-2) + 0.5", "double()"));
+        assertEquals(2.0, run("Math.abs{double}(-2)", "double()"));
+        // the most specific overload: max(long, long) for (int, long)
+        assertEquals(3L, run("Math.max(a, b)", "long(a int; b long)", 3, 2L));
+        // arrays are passed and returned; a returned array is copied before it leaves VEL
+        assertArrayEquals(new double[] {1, 2}, (double[]) run("java.util.Arrays.copyOf(v, 2)", "double[](v double[])",
+                (Object) new double[] {1, 2, 3}));
+        assertEquals(6.0, run("w = 2 * java.util.Arrays.copyOf(v, n); return w[0] + w[1]", "double(v double[]; n int)",
+                new double[] {1, 2, 3}, 2));
+    }
+
+    @Test
+    void staticMethodErrors() {
+        assertThrows(VelCompileError.class, () -> run("Nope.f(x)", "double(x double)", 1.0));
+        assertThrows(VelCompileError.class, () -> run("Math.nope(x)", "double(x double)", 1.0));
+        // no overload takes a boolean; a long does not narrow to int
+        assertThrows(VelCompileError.class, () -> run("Math.abs(b)", "double(b boolean)", true));
+        assertThrows(VelCompileError.class, () -> run("Math.abs{int}(n)", "int(n long)", 1L));
+        // void, or a result VEL cannot hold
+        assertThrows(VelCompileError.class, () -> run("System.gc()", "double()"));
+        assertThrows(VelCompileError.class, () -> run("String.valueOf(x)", "double(x double)", 1.0));
     }
 
     // ---- errors -----------------------------------------------------------------------------------

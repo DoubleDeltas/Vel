@@ -167,6 +167,8 @@ public final class JavaPrinter {
             case Neg n -> "(-" + expr(n.operand()) + ")";
             case Convert c -> convert(expr(c.operand()), c.operand().type().primitive(), c.type().primitive());
             case Call c -> call(c);
+            case Code.Invoke i -> i.owner() + "." + i.method() + i.args().stream().map(JavaPrinter::expr)
+                    .collect(Collectors.joining(", ", "(", ")"));
             case Choose c -> "(" + expr(c.condition()) + " ? " + expr(c.ifTrue()) + " : " + expr(c.ifFalse()) + ")";
             case Fail f -> VEL_MATH + ".<" + boxed(f.type()) + ">error()";
             case Get g -> expr(g.array()) + "[" + expr(g.index()) + "]";

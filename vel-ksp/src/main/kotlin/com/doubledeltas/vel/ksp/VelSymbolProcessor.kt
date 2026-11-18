@@ -8,12 +8,14 @@ import com.doubledeltas.vel.core.codegen.KotlinBoundary
 import com.doubledeltas.vel.core.codegen.ConcreteType
 import com.doubledeltas.vel.core.codegen.JavaTypes
 import com.doubledeltas.vel.core.codegen.KotlinPrinter
+import com.doubledeltas.vel.core.codegen.MethodLookup
 import com.doubledeltas.vel.core.codegen.VelCompileError
 import com.doubledeltas.vel.core.type.Card
 import com.doubledeltas.vel.core.type.DimSpec
 import com.doubledeltas.vel.core.type.VelTypeException
 import com.google.devtools.ksp.processing.CodeGenerator as KspCodeGenerator
 import com.google.devtools.ksp.isAbstract
+import com.google.devtools.ksp.isPublic
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
@@ -21,6 +23,7 @@ import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.processing.SymbolProcessorProvider
 import com.google.devtools.ksp.symbol.ClassKind
+import com.google.devtools.ksp.symbol.FunctionKind
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
@@ -52,7 +55,10 @@ class VelSymbolProcessor(
     private val codeGenerator: KspCodeGenerator,
 ) : SymbolProcessor {
 
+    private lateinit var resolver: Resolver
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        this.resolver = resolver
         val generated = LinkedHashMap<KSClassDeclaration, MutableList<String>>()
         val failed = HashSet<KSClassDeclaration>()
         for (symbol in resolver.getSymbolsWithAnnotation(VEL_ANNOTATION)) {
@@ -128,7 +134,7 @@ class VelSymbolProcessor(
                     codeNames[name] = name + "__v"
                 }
             }
-            val code = CodeGenerator.program(parsed.tree(), types, codeNames, result.type())
+            val code = CodeGenerator.program(parsed.tree(), types, codeNames, result.type(), MethodLookup(::staticMethods))
             val prologue = StringBuilder()
             for (name in code.used()) {
                 val local = codeNames[name] ?: continue
@@ -245,6 +251,40 @@ class VelSymbolProcessor(
             t.arguments.joinToString(", ", "<", ">") { a -> a.type?.resolve()?.let(::render) ?: "*" }
         return name + args + if (t.isMarkedNullable) "?" else ""
     }
+
+    /**
+     * The public static methods of a Java class named in VEL by its qualified name or, for `java.lang`,
+     * its simple name. Functions of Kotlin `object`s and companions are not found yet.
+     * The signature `{…}` names parameters by Kotlin types (kotlin.md 4.1): `Double`, `DoubleArray`.
+     */
+    private fun staticMethods(owner: String, name: String): List<MethodLookup.Method>? {
+        val cls = (if ('.' in owner) resolver.getClassDeclarationByName(resolver.getKSNameFromString(owner)) else null)
+            ?: resolver.getClassDeclarationByName(resolver.getKSNameFromString("java.lang.$owner"))
+            ?: return null
+        return cls.declarations.filterIsInstance<KSFunctionDeclaration>()
+            .filter {
+                it.simpleName.asString() == name && it.functionKind == FunctionKind.STATIC && it.isPublic()
+                        && it.typeParameters.isEmpty() && it.parameters.none { p -> p.isVararg }
+            }
+            .map { f ->
+                MethodLookup.Method(
+                    cls.qualifiedName!!.asString(), name,
+                    f.parameters.map { p ->
+                        val t = p.type.resolve()
+                        MethodLookup.Param(render(t), direct(t))
+                    },
+                    f.returnType?.resolve()?.let(::direct),
+                )
+            }.toList()
+    }
+
+    /** The VEL type of a primitive or an array of one (Java `double` is `kotlin.Double`), or null. */
+    private fun direct(t: KSType): ConcreteType? =
+        try {
+            (boundaryOf(t.makeNotNullable()) as? Boundary.Direct)?.type()
+        } catch (e: VelTypeException) {
+            null
+        }
 
     private fun codeType(t: ConcreteType) =
         com.doubledeltas.vel.core.codegen.Code.Type(t.primitive(), t.javaRank())

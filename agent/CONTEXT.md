@@ -50,7 +50,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - **빌드 메모**:
   - antlr 플러그인이 ANTLR 도구 전체를 `api` 구성으로 흘려보내는 문제는 막아 두었다. 하위 모듈에는 `antlr4-runtime`만 전파된다.
   - 패키지는 `packageName` 속성으로 지정한다. `-package` 인자는 Gradle 9에서 deprecated다.
-- **진행 상태 (2026-11-18)**: 스칼라·배열 식의 구체화기가 Java B/C, Kotlin B/C 네 경로 모두에서 동작한다(타입 검사는 생성기 안에서 `TypeRules`로). 래퍼·`List`·객체 배열·성분 객체·nullable·부호 없는 정수 경계 변환 포함. 미지원 목록은 아래 "Java 구체화기 구현 메모"와 6절. 테스트는 core 96(문법 38, 승격 14, 타입 규칙 29, 생성기 15), processor 7, javac 9, ksp 9, kotlinc 10, examples 2, examples-kotlin 2개이며 모두 통과한다.
+- **진행 상태 (2026-11-18)**: 스칼라·배열 식의 구체화기가 Java B/C, Kotlin B/C 네 경로 모두에서 동작한다(타입 검사는 생성기 안에서 `TypeRules`로). 래퍼·`List`·객체 배열·성분 객체·nullable·부호 없는 정수 경계 변환 포함. 미지원 목록은 아래 "Java 구체화기 구현 메모"와 6절. 테스트는 core 98(문법 38, 승격 14, 타입 규칙 29, 생성기 17), processor 8, javac 10, ksp 10, kotlinc 11, examples 2, examples-kotlin 2개이며 모두 통과한다.
 
 ### 배포 (GitHub Packages)
 - 배포 대상 모듈: `vel-runtime`, `vel-core`, `vel-processor`, `vel-javac`, `vel-ksp`, `vel-kotlinc` (예제 모듈 제외). 좌표는 `com.doubledeltas:<모듈>:<버전>`
@@ -243,6 +243,14 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - **해상도의 표현 둘 (결정됨 2026-11-18)**: 같은 해상도에 표현이 여럿일 수 있다. `Z+16`은 기본 `char`(Java `char`, Kotlin `Char`)이고, Kotlin `UShort`/`UShortArray`에서 온 값은 `ushort`(`short` 비트). `ConcreteType.representation`과 `Boundary.Direct.representation`에 담고(`primitive()`), 생성기는 해상도가 아니라 값의 코드 타입에서 변환을 시작한다(`convTo`). 계산 결과는 기본 표현, 반환할 때 대상 표현으로 비트 변환(복사 없음, 배열은 표현이 다를 때만 복사). 이전의 `UShort` ↔ `Char` 경계 어댑터는 없앴다.
 - 아직: 인라인 IR에서 스칼라가 아닌 원소의 `Array` 결과, Kotlin 인라인에서 속성 참조.
 
+### 정적 메서드 호출 구현 메모 (2026-11-19)
+- `T.foo(x)`, `java.lang.Math.sqrt(x)`, `Math.abs{double}(-2)`가 네 경로 모두에서 동작한다. 클래스 이름은 정규화된 이름이나 `java.lang`의 단순 이름. 수신 객체 자리의 이름이 VEL/타깃 변수면 클래스로 보지 않는다(인스턴스 메서드는 아직 미지원 오류).
+- `MethodLookup`(core): 호스트가 클래스의 public static 메서드를 넘긴다. `ModelMethods`(javax.lang.model; processor·javac), KSP `Resolver.getClassDeclarationByName` + `FunctionKind.STATIC`, IR `finderForSource(file).findClass` + `isStatic`. 매개변수와 반환은 원시 타입과 그 배열(`Boundary.Direct`)만 VEL 타입이 되고, 나머지는 null(그 메서드를 부르면 오류).
+- 해소(`CodeGenerator.mostSpecific`): JLS 15.12.2의 1단계만(동일·확장 원시 변환, 박싱·가변 인자 제외) 적용 가능한 후보 중 가장 구체적인 것. 인자 타입은 값의 표현, 상수는 기본 해상도(7.6). 하나로 안 정해지면 오류. 시그니처 `{…}`는 소거한 타입 이름으로 비교하고, 단순 이름은 마지막 부분만 비교한다(Java `double`, Kotlin `Double` 모두).
+- 인자 변환: 대수 ⊑ 확인, 정수 상수는 매개변수 해상도에 들어가야 하고, 변수는 ⊑ 또는 Java 확장 변환이어야 한다(`long`을 `int` 매개변수에 넘기면 오류). 배열은 모양·방향을 확인하고 필요하면 복사.
+- 중간 코드 `Code.Invoke(owner, method, params, args, type)`: 호출은 한 번 평가해 지역 변수에 담는다. 반환된 배열은 공유될 수 있어 `external`로 보고, VEL을 떠날 때 복사한다.
+- 제외: 제네릭 메서드, 가변 인자 메서드, Kotlin `object`/companion 함수, 인스턴스 메서드, 메서드 참조 값, `f.(x)`.
+
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
 - 리터럴과 상수 접기 결과는 스칼라 `ArrayAlgebra`의 `constant`(`Constant.Int`/`Decimal`/`Rational`, 소수는 끝의 0을 정리한 정규형)로 들고 다닌다. 상수 접기는 `Constant.fold`(VEL 의미론). 리터럴 인덱스, 범위 길이, `^` 규칙이 이 값을 본다. 단항 `-`는 상수를 상수로 유지한다(`x * -1`이 `x`를 따르게).
@@ -267,7 +275,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - [ ] Kotlin 고유 기능의 매핑: `operator fun`을 정의한 사용자 타입, 기본값·이름 있는 인자, `IntRange` 등
 
 - [ ] `@VelConfig` 설계: 최종 정밀도 `MathContext`, 작업 정밀도 등. 형식과 적용 범위(클래스, 메서드, 패키지)
-- [ ] **함수 대수 구현**: 설계는 5절(함수 정의, 오버로딩 해소, 원소별 적용, `inf`)에서 결정됨. 모델(`Func`), 타입 규칙, 함수 리터럴, 호출, `Math.abs{double}`, `f.(x)`, `Vec(inf, Real, i => x[i])` 생성기가 남음.
+- [ ] **함수 대수 구현**: 설계는 5절(함수 정의, 오버로딩 해소, 원소별 적용, `inf`)에서 결정됨. 정적 메서드 호출은 구현됨(위 "정적 메서드 호출 구현 메모"). 모델(`Func`), 타입 규칙, 함수 리터럴, VEL 함수 호출, 메서드 참조 값 `Math.abs{double}`, 인스턴스 메서드, `f.(x)`, `Vec(inf, Real, i => x[i])` 생성기가 남음.
 - [ ] **함수 문법의 남은 설계**: 가변 인자, 제네릭, `void` 처리, `complex(a, b)` 같은 내장 함수, `error()` 메시지
 - [ ] 구체화기 미지원: Complex/`j`, Z∞·Dn·D∞(`BigInteger`/`BigDecimal`), 행렬 나눗셈·거듭제곱, 분할, Bool 행렬 곱, 멤버 접근, 제네릭 메서드·소유 타입
 - [ ] Kotlin 인라인(IR): 스칼라가 아닌 원소의 `Array` 결과(`Array<Point>`), 속성 참조
