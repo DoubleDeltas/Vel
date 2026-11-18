@@ -182,6 +182,23 @@ class VelFrontendTest {
     }
 
     @Test
+    void signaturesSelectAnOverload() {
+        // a reference to one overload is a function value
+        assertEquals("(singleExpression (expr (expr (primary Math)) . abs (signature { (typeName double) })) <EOF>)",
+                tree("Math.abs{double}"));
+        assertEquals("(singleExpression (expr (primary max (signature { (typeName int) , (typeName int) }))) <EOF>)",
+                tree("max{int, int}"));
+        // calls and element-wise application with a signature; no parameters: {}
+        for (String src : new String[] {"Math.abs{double}(x)", "Math.abs{double}.(v)", "v.norm{}()",
+                "foo{double[][], java.math.BigDecimal}(a, b)", "abs = Math.abs{double}\nreturn abs(-2)"}) {
+            ParseResult result = src.contains("=") ? VelFrontend.parseProgram(src) : VelFrontend.parseExpression(src);
+            assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
+        }
+        // the parameter types are type names, not expressions
+        assertTrue(VelFrontend.parseExpression("Math.abs{1 + 2}").hasErrors());
+    }
+
+    @Test
     void boolLiteralsAndImaginaryUnitIdentifier() {
         assertEquals("(singleExpression (expr (primary true)) <EOF>)", tree("true"));
         assertEquals("(singleExpression (expr (primary false)) <EOF>)", tree("false"));

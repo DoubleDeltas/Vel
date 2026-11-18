@@ -124,6 +124,8 @@ fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
 - 최상위 함수: `foo(x)`
 - `object`, `companion object`의 함수: `T.foo(x)`
 
+오버로딩 해소는 Java 매핑 3.1절과 같다. 시그니처 지정 `{…}`에는 **Kotlin 타입**을 쓴다. 예: `maxOf{Double, Double}`, `foo{DoubleArray}`. 확장 함수의 수신 객체는 쓰지 않는다. 제네릭 타입 인자(`Array<Double>` 등)를 쓰는 표기는 아직 정하지 않았다.
+
 멤버 접근 `t.x`는 Kotlin 속성(getter 호출)이다. Kotlin과 같이 Java의 getter `getX()`도 `t.x`로 쓸 수 있다.
 
 반환 타입이 nullable이고 `null`을 돌려주면 `NullPointerException`을 던진다. `suspend` 함수는 지원하지 않는다.

@@ -121,9 +121,11 @@ patternItem
 // A single % does not exist, so Java's `a % b` must be written `a %%% b`.
 expr
     : primary                                               # primaryExpr
-    | expr '.' ID '(' arguments? ')'                        # methodCallExpr
+    | expr '.' ID signature? '(' arguments? ')'             # methodCallExpr
     // Element-wise application `t.foo.(x)`, `Math.sqrt.(v)` (Julia-style dot call)
-    | expr '.' ID '.' '(' arguments? ')'                    # broadcastMethodCallExpr
+    | expr '.' ID signature? '.' '(' arguments? ')'         # broadcastMethodCallExpr
+    // Reference to one overload as a function value: `Math.abs{double}`
+    | expr '.' ID signature                                 # methodRefExpr
     | expr '.' ID                                           # memberExpr
     | expr '[' indexList ']'                                # indexExpr
     | expr op=('\'' | '.\'')                                # transposeExpr
@@ -140,9 +142,11 @@ expr
 primary
     : NUMBER                                                # numberLiteral
     | ('true' | 'false')                                    # boolLiteral
-    | (ID | QUOTED_ID) '(' arguments? ')'                   # callExpr
+    | (ID | QUOTED_ID) signature? '(' arguments? ')'        # callExpr
     // Element-wise application `f.(x)`: f is applied to each element (type-system.md 1.9)
-    | (ID | QUOTED_ID) '.' '(' arguments? ')'               # broadcastCallExpr
+    | (ID | QUOTED_ID) signature? '.' '(' arguments? ')'    # broadcastCallExpr
+    // Reference to one overload as a function value: `max{int, int}`
+    | (ID | QUOTED_ID) signature                            # functionRef
     | ID                                                    # identifier
     | QUOTED_ID                                             # quotedIdentifier
     | '(' expr ')'                                          # parenExpr
@@ -152,6 +156,19 @@ primary
 
 arguments
     : expr (',' expr)*
+    ;
+
+/**
+ * Selects one overload of a target-language method by its parameter types, written as types of the
+ * target language: `Math.abs{double}`, `Math.max{int, int}`, `v.norm{}` (java.md 3.1).
+ */
+signature
+    : '{' (typeName (',' typeName)*)? '}'
+    ;
+
+/** A target-language type: a (qualified) name with array brackets, e.g. `double`, `java.math.BigDecimal`, `double[][]`. */
+typeName
+    : (ID | QUOTED_ID) ('.' (ID | QUOTED_ID))* ('[' ']')*
     ;
 
 /** Subscripts: an index, a range (`1:3` = [1, 3)), cut points (`0:2:3`), or `:` for the whole dimension. */

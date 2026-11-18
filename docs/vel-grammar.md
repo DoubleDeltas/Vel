@@ -78,6 +78,8 @@ j      # 허수 단위
 | `j` | 허수 단위 $\mathrm{complex}(0, 1)$ |
 | `end` | 인덱스 안에서 그 차원의 **길이**(마지막 인덱스는 `end-1`) |
 
+내장 함수(예: `abs`)의 이름도 미리 선언된 이름이다. 대입하면 가려진다. 예: `abs = Math.abs{double}` 뒤의 `abs(x)`는 Java의 `Math.abs(double)`을 부른다.
+
 ### 2.6. 리터럴
 | 종류 | 예 | 설명 |
 | --- | --- | --- |
@@ -180,6 +182,7 @@ VEL의 모든 값은 불변이며, 인덱스 대입은 **복사 후 다시 쓰�
 | 이름 | `x`, `` `j` `` | 2.3절 |
 | 함수 호출 | `sqrt(x)`, `f()` | 내장 함수, 정적 임포트한 함수, 최상위 함수 |
 | 원소별 적용 | `sqrt.(v)`, `f.(A, x)` | 함수를 원소마다 적용한다(아래) |
+| 시그니처 지정 | `max{int, int}`, `f{double}(x)` | 오버로딩 중 하나를 고른다(4.3절) |
 | 괄호 | `(a + b)` | |
 | 튜플 | `(x, y, z)` | 항목을 쌓기. 스칼라면 열벡터, 벡터면 행렬(항목이 행) |
 | 행렬 리터럴 | `[1, 2; 3, 4]` | `,`는 가로, `;`는 세로 연결 |
@@ -216,6 +219,7 @@ E = exp.(A)               # 원소별 지수 (exp(A)는 행렬 지수)
 | --- | --- |
 | `t.foo(x)` | 동적 메서드 호출. `foo(t, x)`로는 부를 수 없다. |
 | `t.foo.(x)`, `T.foo.(x)` | 메서드의 원소별 적용(4.2절) |
+| `T.foo{double}`, `t.foo{int, int}(x)` | **시그니처 지정**: 매개변수 타입을 타깃 언어의 타입으로 써서 오버로딩 중 하나를 고른다. 호출 없이 쓰면 함수 값이다(Java 매핑 3.1절). |
 | `T.foo(x)` | 정적 메서드 호출(`java.lang.Math.sqrt(x)`처럼 정규화된 이름도 가능) |
 | `t.x` | 필드(Kotlin은 속성) 접근 |
 | `m[…]` | 인덱싱 (4.6절) |
@@ -354,8 +358,9 @@ assignOp  = "=" | "+=" | "-=" | "*=" | "/=" | "//=" | "///=" | "%%=" | "%%%=" | 
           | ".+=" | ".-=" | ".*=" | "./=" | ".^=" | "o+="
 
 expr = primary
-     | expr "." ID "(" arguments? ")"
-     | expr "." ID "." "(" arguments? ")"
+     | expr "." ID signature? "(" arguments? ")"
+     | expr "." ID signature? "." "(" arguments? ")"
+     | expr "." ID signature
      | expr "." ID
      | expr "[" indexList "]"
      | expr ("'" | ".'")
@@ -367,14 +372,17 @@ expr = primary
      | "if" expr NEWLINE* "then" expr NEWLINE* "else" expr
 
 primary   = NUMBER | "true" | "false"
-          | name "(" arguments? ")"
-          | name "." "(" arguments? ")"
+          | name signature? "(" arguments? ")"
+          | name signature? "." "(" arguments? ")"
+          | name signature
           | name
           | "(" expr ")"
           | "(" expr ("," expr)+ ")"
           | "[" matrixRow (";" matrixRow)* "]"
 matrixRow = expr ("," expr)*
 arguments = expr ("," expr)*
+signature = "{" (typeName ("," typeName)*)? "}"
+typeName  = name ("." name)* ("[" "]")*
 indexList = index ("," index)*
 index     = ":" | expr
 name      = ID | QUOTED_ID
