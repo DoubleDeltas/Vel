@@ -194,6 +194,14 @@ class VelFrontendTest {
             ParseResult result = src.contains("=") ? VelFrontend.parseProgram(src) : VelFrontend.parseExpression(src);
             assertFalse(result.hasErrors(), () -> src + " " + result.diagnostics());
         }
+        // generic types are written with their type arguments, as in the target language
+        assertEquals("(singleExpression (expr (primary foo (signature { (typeName Array < (typeName Double) >) }))) <EOF>)",
+                tree("foo{Array<Double>}"));
+        for (String src : new String[] {"bar{List<List<Int>>}(x)", "baz{java.util.Map<String, Double>, int[]}",
+                "f{Array<Double>}.(v)", "foo{Double?}(x)", "foo{List<Double?>?, Int}"}) {
+            ParseResult r = VelFrontend.parseExpression(src);
+            assertFalse(r.hasErrors(), () -> src + " " + r.diagnostics());
+        }
         // the parameter types are type names, not expressions
         assertTrue(VelFrontend.parseExpression("Math.abs{1 + 2}").hasErrors());
     }

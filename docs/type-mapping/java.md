@@ -142,7 +142,9 @@ $$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \
 Java 메서드의 시그니처는 **이름과 매개변수 타입 목록**이다(JLS 8.4.2). 반환 타입은 포함되지 않으며, 제네릭 매개변수는 소거(erasure)한 타입으로 비교한다.
 
 **시그니처 지정** `{…}`: 메서드 이름 뒤에 매개변수 타입을 **Java 타입**으로 써서 오버로딩 중 하나를 고른다.
-- 형태: `Math.abs{double}`, `Math.max{int, int}`, `v.norm{}`(매개변수 없음), `foo{double[]}`, `foo{java.math.BigDecimal}`
+- 형태: `Math.abs{double}`, `Math.max{int, int}`, `v.norm{}`(매개변수 없음), `foo{double[]}`, `foo{java.math.BigDecimal}`, `foo{List<Double>}`
+- 제네릭 타입은 타입 인자까지 그대로 쓸 수 있다. Java는 소거한 타입으로 시그니처를 비교하므로 `{List<Double>}`와 `{List}`는 같은 메서드를 가리킨다.
+- 중괄호 안의 타입에는 **오버로딩을 유일하게 구분하는 데 필요한 타깃 언어의 표기를 모두** 쓸 수 있다. 지금은 정규화된 이름, 타입 인자 `<…>`, 배열 `[]`, Kotlin의 nullable `?`이다. Java의 와일드카드(`? extends T`)와 Kotlin의 변성(`out T`)·스타 투영(`*`)은 JVM에서 오버로딩을 구분하지 못하므로 쓰지 않는다.
 - 동적 메서드는 선언된 매개변수만 쓴다(수신 객체는 쓰지 않는다).
 - 호출과 원소별 적용에도 쓸 수 있다: `Math.abs{double}(x)`, `Math.abs{double}.(v)`
 - 호출 없이 쓰면 **함수 값**이다. 이 값은 메서드의 타입을 추상화한 함수 대수를 갖는다(3절).

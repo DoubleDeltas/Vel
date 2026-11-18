@@ -124,7 +124,7 @@ fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
 - 최상위 함수: `foo(x)`
 - `object`, `companion object`의 함수: `T.foo(x)`
 
-오버로딩 해소는 Java 매핑 3.1절과 같다. 시그니처 지정 `{…}`에는 **Kotlin 타입**을 쓴다. 예: `maxOf{Double, Double}`, `foo{DoubleArray}`. 확장 함수의 수신 객체는 쓰지 않는다. 제네릭 타입 인자(`Array<Double>` 등)를 쓰는 표기는 아직 정하지 않았다.
+오버로딩 해소는 Java 매핑 3.1절과 같다. 시그니처 지정 `{…}`에는 **Kotlin 타입**을 쓴다. 예: `maxOf{Double, Double}`, `foo{DoubleArray}`. 확장 함수의 수신 객체는 쓰지 않는다. 제네릭 타입은 타입 인자까지 Kotlin과 같이 쓴다. 예: `foo{Array<Double>}`, `bar{List<List<Int>>}`. JVM에서 `Array<Double>`과 `Array<Int>`는 서로 다른 타입이므로 타입 인자로 오버로딩이 구분될 수 있다. nullable 타입은 `?`까지 쓴다. `foo(x: Double)`과 `foo(x: Double?)`는 JVM에서 `double`과 `java.lang.Double`이라 오버로딩이 되므로 `foo{Double}`과 `foo{Double?}`로 구분한다. 함수 타입 매개변수는 `{Function1<Double, Double>}`처럼 쓴다(`(Double) -> Double` 표기는 아직 받지 않는다).
 
 멤버 접근 `t.x`는 Kotlin 속성(getter 호출)이다. Kotlin과 같이 Java의 getter `getX()`도 `t.x`로 쓸 수 있다.
 

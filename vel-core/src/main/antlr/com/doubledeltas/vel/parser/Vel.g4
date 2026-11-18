@@ -208,9 +208,13 @@ signature
     : '{' (typeName (',' typeName)*)? '}'
     ;
 
-/** A target-language type: a (qualified) name with array brackets, e.g. `double`, `java.math.BigDecimal`, `double[][]`. */
+/**
+ * A target-language type, written as in that language with everything that can tell overloads apart
+ * (java.md 3.1): a (qualified) name, type arguments, array brackets and Kotlin's nullable `?`,
+ * e.g. `double`, `java.math.BigDecimal`, `double[][]`, `Array<Double>`, `List<List<Int>>`, `Double?`.
+ */
 typeName
-    : (ID | QUOTED_ID) ('.' (ID | QUOTED_ID))* ('[' ']')*
+    : (ID | QUOTED_ID) ('.' (ID | QUOTED_ID))* ('<' typeName (',' typeName)* '>')? ('[' ']')* '?'?
     ;
 
 /** Subscripts: an index, a range (`1:3` = [1, 3)), cut points (`0:2:3`), or `:` for the whole dimension. */
