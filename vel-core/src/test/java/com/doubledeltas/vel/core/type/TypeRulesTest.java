@@ -476,6 +476,25 @@ class TypeRulesTest {
         assertEquals(REAL, ScalarAlgebra.join(INT, REAL));
     }
 
+    @Test
+    void notIsTheAlgebraOfError() {
+        ScalarAlgebra not = ScalarAlgebra.NOT;
+        // a subtype of every algebra, the identity of ∨
+        for (ScalarAlgebra k : ScalarAlgebra.values()) {
+            assertTrue(not.isSubtypeOf(k), k::toString);
+            assertEquals(k, ScalarAlgebra.join(not, k));
+            assertEquals(k, ScalarAlgebra.join(k, not));
+        }
+        assertFalse(REAL.isSubtypeOf(not));
+        // if n == inf then error() else n : Card
+        ArrayAlgebra cond = scalar(BOOL);
+        ArrayAlgebra error = scalar(not);
+        assertEquals(scalar(ScalarAlgebra.CARD), TypeRules.conditional(cond, error, scalar(ScalarAlgebra.CARD)));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.conditional(cond, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(3), not)));
+        // an operation on Not is never reached
+        assertEquals(error, TypeRules.binary(ADD, error, lit(1)));
+    }
+
     // ---- @Dim -------------------------------------------------------------------------------------
 
     @Test

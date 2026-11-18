@@ -62,13 +62,14 @@ $$ [\mathbb K]:=\mathrm{Mat}(1,1,\mathbb K) $$
 $$ \mathrm{Card} := 0 \mid \mathbb{N} \mid \top \mid \bot $$
 $\bot$을 뺀 원소는 다음과 같이 순서를 가진다.
 $$ 0 < 1 < 2 < \cdots < \top$$
-$\bot$은 이 순서 위에 있지 않으며, **유효하지 않은 인덱스**를 뜻한다. $\bot$은 서수에서 **null과 같은 역할**을 한다.
+$\top$은 **무한대** $\aleph_0$이며, VEL에서는 미리 선언된 이름 `inf`로 쓴다. $\bot$은 이 순서 위에 있지 않으며, **유효하지 않은 인덱스**를 뜻한다. $\bot$은 서수에서 **null과 같은 역할**을 한다.
 - 결과가 서수가 될 수 없는 연산은 $\bot$을 낸다. 예: $m > n$일 때 $n - m = \bot$
 - $\bot$을 인덱스나 차원 크기로 쓰거나 연산에 쓰면, null 원소를 연산에 쓸 때(1.2절)와 같이 `NullPointerException`이 발생한다. 컴파일 타임에 $\bot$임을 알 수 있으면 컴파일 오류다.
 
 $\mathrm{Card}$는 $\mathrm{Int}$의 하위 대수가 아니다($\top$, $\bot$은 정수가 아니다). 대신 다음과 같이 변환한다.
-- **인덱스 자리**(인덱스, 범위 경계, 분할점)에서는 $\mathrm{Int}$를 $\mathrm{Card}$로 변환한다. 음수는 $\bot$이 된다. 예: `b`가 `int[]`이어도 `a[b[i]]`를 쓸 수 있다.
-- **산술**에서는 $\mathrm{Card}$를 $\mathrm{Int}$로 변환해 계산한다. 예: `end - 1`은 $\mathrm{Int}$다.
+- **인덱스 자리**(인덱스, 범위 경계, 분할점)와 **$\mathrm{Card}$ 매개변수 자리**(1.10절)에서는 $\mathrm{Int}$를 $\mathrm{Card}$로 변환한다. 음수는 $\bot$이 된다. 예: `b`가 `int[]`이어도 `a[b[i]]`를 쓸 수 있고, `n : Card`일 때 `fibo(n-2)`를 쓸 수 있다.
+- **산술**과 $\mathrm{Int}$가 필요한 자리(예: 반환 대수가 $\mathrm{Int}$인 함수의 반환값)에서는 $\mathrm{Card}$를 $\mathrm{Int}$로 변환한다. 예: `end - 1`은 $\mathrm{Int}$다.
+- $\top$은 정수가 아니므로 $\mathrm{Int}$로 변환하면 $\bot$을 쓴 것과 같이 오류(`NullPointerException`)다. 컴파일 타임에 알 수 있으면 컴파일 오류다.
 
 수치 대수는 아래와 같은 자명한 위계를 갖는다.
 $$\mathrm{Int} <: \mathrm{Real} <: \mathrm{Complex}$$
@@ -76,8 +77,16 @@ $\mathrm{Bool}$은 다른 스칼라 대수와 위계를 갖지 않는다. $\math
 
 복소 정수(가우스 정수)는 지금은 다루지 않는다. 필요해지면 별도의 스칼라 대수로 추가한다.
 
+**$\mathrm{Not}$**은 원소가 없는 대수다. 값을 내지 않고 끝나는 식, 즉 실행하면 오류가 나는 식의 대수다.
+- 모든 대수의 하위 대수다: 모든 $\mathbb K$에 대해 $\mathrm{Not} <: \mathbb K$, $\mathrm{Not} \vee \mathbb K = \mathbb K$. 그래서 조건식의 가지나 `return`에 섞여도 결과 대수를 바꾸지 않는다.
+- $\mathrm{Not}$이 피연산자인 연산의 결과도 $\mathrm{Not}$이다(그 연산까지 실행이 이어지지 않는다).
+- 내장 함수 `error()`는 인자가 없고 대수가 $\mathrm{Not}$인 식이다. 실행하면 예외를 던진다. 예: `if n == inf then error() else fibo(n)`
+- $\mathrm{Card}$의 무효 원소 $\bot$(null)과 다르다. $\bot$은 $\mathrm{Card}$ 안의 값이고, $\mathrm{Not}$에는 값이 없다.
+
 ### 1.2. 크기가 $\top$인 차원
-배열의 각 차원 크기 $d_i$는 서수이므로 $\top$일 수 있다. $\top$은 **컴파일 타임에 크기를 모르는 차원**을 뜻한다. 실제 길이는 실행 시점에 정해진다.
+배열의 각 차원 크기 $d_i$는 서수이므로 $\top$일 수 있다. $\top$은 무한대 $\aleph_0$이며, 차원 크기로 쓰이면 "$\top$이 아닌 어떤 인덱스든 들어올 수 있고, 실제 범위는 실행 시점에 정해진다"로 해석한다. 그래서 Java 배열처럼 **컴파일 타임에 크기를 모르는 차원**이 된다.
+
+$\top$이 언제나 "길이가 정해지지 않음"을 뜻하지는 않는다. 대수의 인자로 쓰인 $\top$은 **무한 차원 배열**(예: 다항식 기저 $[1, x, x^2, \cdots]$)을 나타낼 수도 있다. 이런 배열을 만드는 문법(예: `Vec(inf, Real, i => x[i])`)은 이후 정한다. 이 절의 나머지 규칙은 크기를 모르는 차원에 대한 것이다.
 
 서수의 덧셈과 최댓값은 다음과 같이 확장한다($n$은 자연수).
 $$ n + \top = \top + n = \top, \qquad \max(n, \top) = \top $$
@@ -188,6 +197,28 @@ $$ M[\mathbf a, \mathbf b] : \mathrm{Array}(k, l, h, w, \mathbb K) $$
 $$ \text{f.}(X_1, \cdots, X_n) : \mathrm{Array}(\mathbf d, B) $$
 - 스칼라를 받는 자리에 배열을 넘기는 일반 호출 `f(X)`는 타입 오류다. 원소별 적용과 행렬 함수(예: 행렬 지수 함수 `exp(A)`)를 구분하기 위해서다.
 - 구체화할 때 이어진 원소별 연산(예: `sin.(x) .+ 1`)은 루프 하나로 합칠 수 있다.
+
+### 1.10. 함수 정의
+VEL 안에서 함수는 **함수 리터럴** `(매개변수) => 본문`으로 만든다. 함수는 값이므로 변수에 대입해 쓴다.
+
+```
+f = (a: Real, b: Real) => sqrt(a^2 + b^2)          # Func(Real × Real, Real)
+g = ((x, y): Vec(2, Real)) => sqrt(x^2 + y^2)      # Func(Vec(2, Real), Real)
+fibo = (n: Card) => {
+  if n == inf then return inf
+  if n == 0 then return 0
+  if n == 1 then return 1
+  return fibo(n-2) + fibo(n-1)
+}                                                   # Func(Card, Int)
+```
+
+- **매개변수**는 이름 또는 구조 분해 패턴(3.3절의 튜플·행렬 패턴)이며, `:` 뒤에 **대수**를 쓴다. 해상도는 쓰지 않는다. 함수는 호출될 때마다 인자의 해상도로 구체화된다(0.3절).
+- 매개변수의 대수는 쓰이는 자리에서 추론할 수 있으면 생략할 수 있다. 예: `i => x[i]`
+- 여러 매개변수 함수 $\mathrm{Func}(A \times B, R)$와 벡터 매개변수 함수 $\mathrm{Func}(\mathrm{Vec}(2, A), R)$는 다르다. `f((3, 4))`나 `g(3, 4)`는 타입 오류다.
+- **본문**은 식이거나 블록 `{ … }`이다. 블록은 문장의 나열이며 `return`으로 끝나야 한다. 그 전의 `return`은 `if … then` 아래에서만 쓸 수 있다(조기 반환).
+- **반환 대수**는 모든 `return` 값의 대수의 상한($\vee$)으로 추론한다. 재귀 호출은 재귀가 아닌 `return`들로 먼저 구한 대수로 가정하고 다시 검사하며, 결과가 바뀌면 오류다. 위 `fibo`에서 `n-2`는 산술이므로 $\mathrm{Int}$이고(1.1절), 반환 대수는 $\mathrm{Card} \vee \mathrm{Int} = \mathrm{Int}$다. `fibo(n-2)`의 인자 `n-2`는 $\mathrm{Card}$ 매개변수 자리에서 $\mathrm{Card}$로 변환된다. `return inf`는 $\top$을 $\mathrm{Int}$로 변환하므로 `fibo(inf)`는 오류다.
+- 함수는 바깥의 변수를 **값으로** 붙잡는다. VEL 값은 불변이므로 붙잡은 뒤 바깥 변수를 다시 묶어도 함수 안의 값은 바뀌지 않는다.
+- 원소별 적용 `f.(A, B)`(1.9절)도 그대로 쓸 수 있다.
 
 ## 2. 해상도 (Resolution)
 원소를 표현할 수 있는 범위(range)와 정확도(precision)의 그룹.
@@ -306,7 +337,14 @@ VEL 식은 계산 순서가 아니라 식을 지시하므로, 구체화할 때 *
 - 결합법칙이 성립하지 않는 연산($-$, $/$, `^`, 몫과 나머지 등)은 식에 쓴 순서를 따른다.
 - 부동소수 해상도로 구체화하면 묶는 순서에 따라 결과가 미세하게 달라질 수 있다.
 
-### 3.5. 배열
+### 3.5. 비교
+비교 연산 `==` `!=` `<` `<=` `>` `>=`의 결과 대수는 $\mathrm{Bool}$이다.
+- 수치 대수와 $\mathrm{Card}$끼리 비교할 수 있다. 두 피연산자의 대수는 상한($\vee$)이 있어야 한다. $\mathrm{Bool}$끼리는 `==` `!=`만 쓸 수 있다.
+- $\mathrm{Complex}$에는 순서가 없으므로 `<` `<=` `>` `>=`를 쓸 수 없다.
+- $\mathrm{Card}$끼리의 비교는 서수의 순서($0 < 1 < \cdots < \top$)를 따른다. $\bot$을 비교에 쓰면 $\bot$을 연산에 쓴 것이다(1.1절).
+- 배열끼리는 원소별로 비교하며 브로드캐스팅한다(1.3절). 결과는 $\mathrm{Bool}$ 배열이다. 조건식의 조건은 $\mathrm{Bool}$ 스칼라여야 하므로, 배열 비교를 조건으로 쓰면 타입 오류다.
+
+### 3.6. 배열
 배열 간 원소별 연산의 원소 대수는 위 규칙을 원소 대수에 적용해 정한다.
 $$ \mathrm{Array}(\mathbf d, \mathbb K_1) \circ \mathrm{Array}(\mathbf d, \mathbb K_2) : \mathrm{Array}(\mathbf d, \mathbb K_1 \vee \mathbb K_2) $$
 

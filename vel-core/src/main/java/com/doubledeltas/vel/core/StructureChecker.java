@@ -13,8 +13,9 @@ import com.doubledeltas.vel.parser.VelParser;
  * <ul>
  *   <li>A chain of cut points {@code a:b:c…} (a partition) is allowed only as a subscript; elsewhere a
  *       range is just {@code a:b}.</li>
- *   <li>A program that is a single expression returns that expression. Any other program must end
- *       with {@code return}, and {@code return} can only be the last statement.</li>
+ *   <li>A program (or a function block) that is a single expression returns that expression. Any
+ *       other program or block must end with {@code return}. Before that, {@code return} can only be
+ *       used under {@code if … then} (an early return).</li>
  * </ul>
  */
 final class StructureChecker extends VelBaseVisitor<Void> {
@@ -23,7 +24,7 @@ final class StructureChecker extends VelBaseVisitor<Void> {
 
     static List<VelDiagnostic> checkProgram(VelParser.ProgramContext program) {
         StructureChecker checker = new StructureChecker();
-        checker.checkReturn(program);
+        checker.checkReturn(program.statement(), program.getStop(), "a program");
         checker.visit(program);
         return checker.diagnostics;
     }
@@ -34,20 +35,25 @@ final class StructureChecker extends VelBaseVisitor<Void> {
         return checker.diagnostics;
     }
 
-    private void checkReturn(VelParser.ProgramContext program) {
-        List<VelParser.StatementContext> statements = program.statement();
+    private void checkReturn(List<VelParser.StatementContext> statements, Token end, String what) {
         if (statements.size() == 1 && statements.getFirst() instanceof VelParser.ExprStmtContext) {
             return; // a single expression is the result
         }
         for (int i = 0; i < statements.size() - 1; i++) {
             if (statements.get(i) instanceof VelParser.ReturnStmtContext ret) {
-                error(ret.getStart(), "return must be the last statement");
+                error(ret.getStart(), "return must be the last statement (or under if … then)");
             }
         }
         if (statements.isEmpty() || !(statements.getLast() instanceof VelParser.ReturnStmtContext)) {
-            Token at = statements.isEmpty() ? program.getStop() : statements.getLast().getStart();
-            error(at, "a program with more than one expression must end with return");
+            Token at = statements.isEmpty() ? end : statements.getLast().getStart();
+            error(at, what + " with more than one expression must end with return");
         }
+    }
+
+    @Override
+    public Void visitBlock(VelParser.BlockContext ctx) {
+        checkReturn(ctx.statement(), ctx.getStop(), "a function block");
+        return visitChildren(ctx);
     }
 
     @Override

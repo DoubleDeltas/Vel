@@ -245,6 +245,13 @@ class PromotionTest {
     }
 
     @Test
+    void notHasNoType() {
+        for (Resolution x : new Resolution[] {BOOL, Resolution.CARD, INT32, FLOAT64, BIG_DECIMAL}) {
+            assertThrows(IllegalArgumentException.class, () -> new ScalarType(ScalarAlgebra.NOT, x), x::toString);
+        }
+    }
+
+    @Test
     void scalarTypeAssignability() {
         assertTrue(ScalarType.integer(INT32).isAssignableTo(ScalarType.real(FLOAT64)));
         assertFalse(ScalarType.real(FLOAT64).isAssignableTo(ScalarType.integer(INT32)));

@@ -27,6 +27,9 @@ public record ScalarType(ScalarAlgebra algebra, Resolution resolution) {
     }
 
     private static boolean isValid(ScalarAlgebra algebra, Resolution r) {
+        if (algebra == ScalarAlgebra.NOT) {
+            return false; // Not has no value, hence no type: error() concretizes to a throw
+        }
         if (algebra == ScalarAlgebra.BOOL || r instanceof Resolution.Bool) {
             return algebra == ScalarAlgebra.BOOL && r instanceof Resolution.Bool;
         }

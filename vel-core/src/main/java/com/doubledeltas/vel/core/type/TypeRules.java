@@ -23,6 +23,9 @@ public final class TypeRules {
      * non-negative integer literal ({@code A ∨ B ∨ Real}); {@link #binary} handles the literal case.
      */
     public static ScalarAlgebra arithmetic(Arithmetic op, ScalarAlgebra a, ScalarAlgebra b) {
+        if (a == ScalarAlgebra.NOT || b == ScalarAlgebra.NOT) {
+            return ScalarAlgebra.NOT; // the operation is never reached
+        }
         a = a.arithmetic(); // Card is computed as Int (type-system.md 1.1)
         b = b.arithmetic();
         if (a == ScalarAlgebra.BOOL || b == ScalarAlgebra.BOOL) {
@@ -117,7 +120,7 @@ public final class TypeRules {
      * type-system.md 1.2) and the join of the element algebras.
      */
     public static ArrayAlgebra conditional(ArrayAlgebra condition, ArrayAlgebra then, ArrayAlgebra otherwise) {
-        if (!condition.isScalar() || condition.element() != ScalarAlgebra.BOOL) {
+        if (!condition.isScalar() || !condition.element().isSubtypeOf(ScalarAlgebra.BOOL)) {
             throw new VelTypeException("condition of if must be a Bool scalar, not " + condition);
         }
         int rank = Math.max(then.rank(), otherwise.rank());

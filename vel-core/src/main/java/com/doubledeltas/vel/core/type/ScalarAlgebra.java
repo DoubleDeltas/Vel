@@ -6,14 +6,16 @@ package com.doubledeltas.vel.core.type;
  * ({@link com.doubledeltas.vel.core.concretization.ScalarType}).
  * {@code Int <: Real <: Complex}; {@code Bool} is unrelated to the others. {@code Card} (cardinals,
  * type-system.md 1.1) is not a subtype of {@code Int}, but converts to {@code Int} in arithmetic and
- * from {@code Int} in index positions.
+ * from {@code Int} in index positions. {@code Not} has no element: it is the algebra of an expression
+ * that never gives a value ({@code error()}), a subtype of every algebra (type-system.md 1.1).
  */
 public enum ScalarAlgebra {
     BOOL("Bool"),
     INT("Int"),
     REAL("Real"),
     COMPLEX("Complex"),
-    CARD("Card");
+    CARD("Card"),
+    NOT("Not");
 
     private final String symbol;
 
@@ -22,7 +24,7 @@ public enum ScalarAlgebra {
     }
 
     public boolean isSubtypeOf(ScalarAlgebra other) {
-        if (this == other) {
+        if (this == other || this == NOT) {
             return true;
         }
         return isNumber() && other.isNumber() && ordinal() < other.ordinal();
@@ -40,9 +42,15 @@ public enum ScalarAlgebra {
 
     /**
      * {@code a ∨ b} (type-system.md 3.1). Bool has no join with a numeric algebra. {@code Card ∨ Card}
-     * is {@code Card}; with a number, {@code Card} converts to {@code Int}.
+     * is {@code Card}; with a number, {@code Card} converts to {@code Int}. {@code Not ∨ K = K}.
      */
     public static ScalarAlgebra join(ScalarAlgebra a, ScalarAlgebra b) {
+        if (a == NOT) {
+            return b;
+        }
+        if (b == NOT) {
+            return a;
+        }
         if (a == CARD && b == CARD) {
             return CARD;
         }

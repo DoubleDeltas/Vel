@@ -1,8 +1,19 @@
 grammar Vel;
 
 @lexer::members {
-    /** Newlines inside (), [] are insignificant, so expressions can span lines. */
-    private int nesting = 0;
+    /**
+     * Open brackets, innermost last. Newlines inside (), [] are insignificant, so expressions can span
+     * lines; inside a block {} they separate statements again, even when the block is inside ().
+     */
+    private final java.util.ArrayDeque<Integer> brackets = new java.util.ArrayDeque<>();
+
+    private void open(int type) {
+        brackets.push(type);
+    }
+
+    private void close() {
+        brackets.poll();
+    }
 
     /** Type of the last token actually emitted (skipped tokens are not counted). */
     private int lastType = Token.INVALID_TYPE;
@@ -28,6 +39,8 @@ grammar Vel;
             case DOT_CARET_ASSIGN:
             case COMMA: case COLON: case DOT:
             case IF: case THEN: case ELSE:
+            case EQ: case NE: case LT: case LE: case GT: case GE: case ARROW:
+            case LBRACE:
                 return true;
             default:
                 return false;
@@ -36,7 +49,8 @@ grammar Vel;
 
     /** Whether a line break at this point is a statement separator. */
     private boolean significantNewline() {
-        return nesting == 0 && !continuesLine();
+        Integer innermost = brackets.peek();
+        return (innermost == null || innermost == LBRACE) && !continuesLine();
     }
 }
 
@@ -61,6 +75,8 @@ sep
 
 statement
     : 'return' expr                                         # returnStmt
+    // Statement form of if, without else: `if n == 0 then return 0` (inside a block)
+    | 'if' expr NEWLINE* 'then' statement                   # ifStmt
     | pattern '=' expr                                      # destructuringStmt
     | target op=( '='
                 | '+=' | '-=' | '*=' | '/=' | '//=' | '///=' | '%%=' | '%%%=' | '^='
@@ -134,9 +150,35 @@ expr
     | expr op=('*' | '/' | '/>' | '/<' | '//' | '///' | '%%' | '%%%' | '.*' | './') expr  # mulExpr
     | expr op=('+' | '-' | '.+' | '.-' | 'o+') expr         # addExpr
     | expr ':' expr                                         # rangeExpr
-    // Conditional expression, the lowest precedence: the else branch extends as far as possible.
+    // Comparisons give Bool, element by element (type-system.md 3.6)
+    | expr op=('==' | '!=' | '<' | '<=' | '>' | '>=') expr   # compareExpr
+    // Conditional expression: the else branch extends as far as possible.
     // Only the chosen branch is evaluated. Line breaks before `then` and `else` are allowed.
     | 'if' expr NEWLINE* 'then' expr NEWLINE* 'else' expr   # conditionalExpr
+    // Function literal, the lowest precedence: `(a: Real, b: Real) => sqrt(a^2 + b^2)`, `i => x[i]`,
+    // `(n: Card) => { ... }` (type-system.md 1.10)
+    | parameters '=>' (expr | block)                        # functionExpr
+    ;
+
+/** Parameters of a function literal: one untyped name, or a parenthesized list. */
+parameters
+    : (ID | QUOTED_ID)                                      # singleParameter
+    | '(' (parameter (',' parameter)*)? ')'                 # parameterList
+    ;
+
+/** A name or a destructuring pattern, with its algebra (omitted when it can be inferred from the use). */
+parameter
+    : (ID | QUOTED_ID | pattern) (':' algebra)?
+    ;
+
+/** An algebra written in VEL: `Real`, `Card`, `Vec(2, Real)`, `Mat(inf, 3, Complex)`. */
+algebra
+    : (ID | QUOTED_ID) ('(' arguments ')')?
+    ;
+
+/** A block body: statements separated by newlines or ';', the result given by return. */
+block
+    : '{' sep* (statement (sep+ statement)*)? sep* '}'
     ;
 
 primary
@@ -200,7 +242,7 @@ matrixRow
 //
 // Reserved words are `return`, `true`, `false`, `if`, `else` (all Java keywords) and `then` (the only
 // one that is not; a Java variable named then must be written in backticks). Every other Java identifier can be
-// referenced by name. `end` (inside subscripts: the length of the dimension) and `j` (imaginary unit) are predeclared names,
+// referenced by name. `end` (inside subscripts: the length of the dimension), `inf` (the cardinal ⊤) and `j` (imaginary unit) are predeclared names,
 // lexed as ordinary identifiers and resolved by the semantic analysis. As in Kotlin, a name in
 // backticks (QUOTED_ID) bypasses the predeclared names: plain j is the imaginary unit, while
 // j wrapped in backticks is the Java variable named j.
@@ -213,10 +255,12 @@ ELSE   : 'else' ;
 TRUE   : 'true' ;
 FALSE  : 'false' ;
 
-LPAREN : '(' { nesting++; } ;
-RPAREN : ')' { if (nesting > 0) nesting--; } ;
-LBRACK : '[' { nesting++; } ;
-RBRACK : ']' { if (nesting > 0) nesting--; } ;
+LPAREN : '(' { open(LPAREN); } ;
+RPAREN : ')' { close(); } ;
+LBRACK : '[' { open(LBRACK); } ;
+RBRACK : ']' { close(); } ;
+LBRACE : '{' { open(LBRACE); } ;
+RBRACE : '}' { close(); } ;
 
 COMMA    : ',' ;
 QUESTION : '?' ;
@@ -242,6 +286,14 @@ DOT_MINUS : '.-' ;
 DOT_STAR  : '.*' ;
 DOT_SLASH : './' ;
 DOT_CARET : '.^' ;
+
+EQ    : '==' ;
+NE    : '!=' ;
+LT    : '<' ;
+LE    : '<=' ;
+GT    : '>' ;
+GE    : '>=' ;
+ARROW : '=>' ;
 
 ASSIGN                 : '=' ;
 PLUS_ASSIGN            : '+=' ;

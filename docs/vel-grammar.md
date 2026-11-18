@@ -77,8 +77,11 @@ j      # 허수 단위
 | --- | --- |
 | `j` | 허수 단위 $\mathrm{complex}(0, 1)$ |
 | `end` | 인덱스 안에서 그 차원의 **길이**(마지막 인덱스는 `end-1`) |
+| `inf` | 서수 $\top$(무한대 $\aleph_0$, 타입 시스템 1.1절). 대수 $\mathrm{Card}$의 값 |
 
-내장 함수(예: `abs`)의 이름도 미리 선언된 이름이다. 대입하면 가려진다. 예: `abs = Math.abs{double}` 뒤의 `abs(x)`는 Java의 `Math.abs(double)`을 부른다.
+`error()`는 실행하면 예외를 던지는 내장 함수이며, 대수는 $\mathrm{Not}$이다(타입 시스템 1.1절). 조건식의 한쪽 가지에 쓸 수 있다: `if n == inf then error() else n`
+
+내장 함수(예: `abs`, `error`)의 이름도 미리 선언된 이름이다. 대입하면 가려진다. 예: `abs = Math.abs{double}` 뒤의 `abs(x)`는 Java의 `Math.abs(double)`을 부른다.
 
 ### 2.6. 리터럴
 | 종류 | 예 | 설명 |
@@ -110,9 +113,14 @@ return p + v2 * dt          # 여러 문장: return으로 끝남
 | 문장 | 형태 |
 | --- | --- |
 | 반환 | `return` *식* |
+| 조건 문장 | `if` *조건* `then` *문장* (`else` 없음) |
 | 대입 | *대상* *대입연산자* *식* |
 | 구조 분해 대입 | *패턴* `=` *식* (3.3절) |
 | 식 | *식* |
+
+**조건 문장** `if c then 문장`은 조건이 참일 때만 문장을 실행한다. 주로 블록 안의 조기 반환에 쓴다: `if n == 0 then return 0`. `else`가 있으면 조건식(4.9절)이다.
+
+`return`은 프로그램과 블록의 마지막 문장이어야 하며, 그 전에는 조건 문장 아래에서만 쓸 수 있다.
 
 **대입 대상**은 변수, 또는 변수의 원소·부분행렬이다. 멤버 대입(`v.x = 1`)은 허용하지 않는다.
 
@@ -167,7 +175,9 @@ VEL의 모든 값은 불변이며, 인덱스 대입은 **복사 후 다시 쓰�
 | 5 | 곱셈 계열 `*` `/` `/>` `/<` `//` `///` `%%` `%%%` `.*` `./` | 왼쪽 |
 | 6 | 덧셈 계열 `+` `-` `.+` `.-` `o+` | 왼쪽 |
 | 7 | 범위 `:` | |
-| 8 | 조건식 `if … then … else …` | |
+| 8 | 비교 `==` `!=` `<` `<=` `>` `>=` | 왼쪽 |
+| 9 | 조건식 `if … then … else …` | |
+| 10 | 함수 리터럴 `… => …` | |
 
 예:
 - `-a^2` = `-(a^2)`, `2^-1` = `2^(-1)`, `a^b^c` = `a^(b^c)`
@@ -328,7 +338,7 @@ y = if c1 then a else if c2 then b else d      # else if로 이어 쓴다
 - 조건은 `Bool` 스칼라다. 고른 쪽 가지만 평가한다.
 - 결과 타입은 두 가지의 공통 타입이다(타입 시스템 1.8절). 두 가지의 모양이 맞아야 한다.
 - `else`는 반드시 있어야 한다.
-- 우선순위가 가장 낮아서 `else` 뒤는 끝까지 이어진다. `if c then a else b + 1`은 `if c then a else (b + 1)`이다. 다른 식의 피연산자로 쓸 때는 괄호로 감싼다: `x * (if c then 2 else 3)`
+- 우선순위가 함수 리터럴 다음으로 낮아서 `else` 뒤는 끝까지 이어진다. `if c then a else b + 1`은 `if c then a else (b + 1)`이다. 다른 식의 피연산자로 쓸 때는 괄호로 감싼다: `x * (if c then 2 else 3)`
 - 여러 줄로 쓸 수 있다.
 
 ```
@@ -336,6 +346,28 @@ y = if c
     then a
     else b
 ```
+
+### 4.10. 비교
+`==` `!=` `<` `<=` `>` `>=`는 `Bool`을 낸다(타입 시스템 3.5절). 범위보다 우선순위가 낮다: `a + 1 <= b:c`는 `(a + 1) <= (b:c)`다. 배열끼리는 원소별로 비교한다.
+
+### 4.11. 함수 리터럴
+`(매개변수) => 본문`은 함수 값이다(타입 시스템 1.10절). 우선순위가 가장 낮아서 본문은 끝까지 이어진다.
+
+```
+f = (a: Real, b: Real) => sqrt(a^2 + b^2)
+g = ((x, y): Vec(2, Real)) => sqrt(x^2 + y^2)
+h = i => x[i]                       # 매개변수 하나는 괄호와 대수를 생략할 수 있다(추론될 때)
+fibo = (n: Card) => {
+  if n == inf then return inf
+  if n == 0 then return 0
+  if n == 1 then return 1
+  return fibo(n-2) + fibo(n-1)
+}
+```
+
+- 매개변수의 대수는 `Real`, `Card`, `Vec(2, Real)`, `Mat(inf, 3, Complex)`처럼 쓴다.
+- 블록 `{ … }` 안에서는 줄바꿈이 다시 문장 구분자다. 블록이 괄호 안에 있어도 그렇다.
+- 매개변수의 `:`는 범위 연산자와 같은 기호지만, `=>`가 뒤따르는지로 구분한다. `(a:b, c:d)`는 범위의 튜플이다.
 
 ## 5. 문법 요약
 `Vel.g4`의 파서 규칙을 줄여 적는다. `"..."`는 토큰이다.
@@ -346,6 +378,7 @@ singleExpression = NEWLINE* expr NEWLINE* EOF
 sep              = NEWLINE | ";"
 
 statement = "return" expr
+          | "if" expr NEWLINE* "then" statement
           | pattern "=" expr
           | target assignOp expr
           | expr
@@ -369,7 +402,9 @@ expr = primary
      | expr ("*" | "/" | "/>" | "/<" | "//" | "///" | "%%" | "%%%" | ".*" | "./") expr
      | expr ("+" | "-" | ".+" | ".-" | "o+") expr
      | expr ":" expr
+     | expr ("==" | "!=" | "<" | "<=" | ">" | ">=") expr
      | "if" expr NEWLINE* "then" expr NEWLINE* "else" expr
+     | parameters "=>" (expr | block)
 
 primary   = NUMBER | "true" | "false"
           | name signature? "(" arguments? ")"
@@ -382,6 +417,10 @@ primary   = NUMBER | "true" | "false"
 matrixRow = expr ("," expr)*
 arguments = expr ("," expr)*
 signature = "{" (typeName ("," typeName)*)? "}"
+parameters = name | "(" (parameter ("," parameter)*)? ")"
+parameter  = (name | pattern) (":" algebra)?
+algebra    = name ("(" arguments ")")?
+block      = "{" sep* (statement (sep+ statement)*)? sep* "}"
 typeName  = name ("." name)* ("[" "]")*
 indexList = index ("," index)*
 index     = ":" | expr

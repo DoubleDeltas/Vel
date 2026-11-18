@@ -199,6 +199,45 @@ class VelFrontendTest {
     }
 
     @Test
+    void functionLiterals() {
+        String program = """
+                f = (a: Real, b: Real) => sqrt(a^2+b^2)
+                g = ((x, y): Vec(2, Real)) => sqrt(x^2+y^2)
+                fibo = (n: Card) => {
+                  if n == inf then return inf
+                  if n == 0 then return 0
+                  if n == 1 then return 1
+                  return fibo(n-2) + fibo(n-1)
+                }
+                e = Vec(inf, Real, i => x[i])
+                return f(3, 4) + g((3, 4)) + fibo(10)
+                """;
+        ParseResult result = VelFrontend.parseProgram(program);
+        assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
+        // the body extends as far as possible; parameters may be untyped
+        assertEquals("(singleExpression (expr (parameters i) => (expr (expr (primary x)) [ (indexList (index (expr (primary i)))) ])) <EOF>)",
+                tree("i => x[i]"));
+        // a block inside parentheses still separates statements by newlines
+        ParseResult nested = VelFrontend.parseExpression("map((n: Card) => {\n  m = n + 1\n  return m * 2\n}, v)");
+        assertFalse(nested.hasErrors(), () -> nested.diagnostics().toString());
+        // a block must end with return; an early return needs if … then
+        assertTrue(VelFrontend.parseExpression("(n: Card) => {\n  m = n + 1\n}").hasErrors());
+        assertTrue(VelFrontend.parseExpression("(n: Card) => {\n  return 1\n  return 2\n}").hasErrors());
+        // (a:b, c:d) without => is still a tuple of ranges
+        assertFalse(VelFrontend.parseExpression("(a:b, c:d)").hasErrors());
+    }
+
+    @Test
+    void comparisons() {
+        assertEquals("(singleExpression (expr (expr (expr (primary a)) + (expr (primary 1))) <= (expr (expr (primary b)) : (expr (primary c)))) <EOF>)",
+                tree("a + 1 <= b:c"));
+        for (String src : new String[] {"a == b", "a != b", "a < b", "a > b", "a >= b",
+                "if x < 0 then -x else x"}) {
+            assertFalse(VelFrontend.parseExpression(src).hasErrors(), src);
+        }
+    }
+
+    @Test
     void boolLiteralsAndImaginaryUnitIdentifier() {
         assertEquals("(singleExpression (expr (primary true)) <EOF>)", tree("true"));
         assertEquals("(singleExpression (expr (primary false)) <EOF>)", tree("false"));
