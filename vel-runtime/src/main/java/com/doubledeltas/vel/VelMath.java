@@ -75,6 +75,29 @@ public final class VelMath {
         return (float) floorMod((double) a, (double) b);
     }
 
+    // ---- arrays -------------------------------------------------------------------------------------
+
+    /**
+     * A new zero-filled array of {@code lengths.length} levels (outermost first) whose elements are of
+     * the primitive with the given JVM descriptor ({@code 'D'} double, {@code 'F'}, {@code 'J'} long,
+     * {@code 'I'}, {@code 'S'}, {@code 'B'}, {@code 'C'}, {@code 'Z'} boolean). Used where the target
+     * has no multi-dimensional array creation (Kotlin IR).
+     */
+    public static Object newArray(char primitive, int... lengths) {
+        Class<?> element = switch (primitive) {
+            case 'D' -> double.class;
+            case 'F' -> float.class;
+            case 'J' -> long.class;
+            case 'I' -> int.class;
+            case 'S' -> short.class;
+            case 'B' -> byte.class;
+            case 'C' -> char.class;
+            case 'Z' -> boolean.class;
+            default -> throw new IllegalArgumentException("not a primitive descriptor: " + primitive);
+        };
+        return java.lang.reflect.Array.newInstance(element, lengths);
+    }
+
     // ---- error() ------------------------------------------------------------------------------------
 
     /**

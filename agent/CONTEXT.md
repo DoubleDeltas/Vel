@@ -221,7 +221,15 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - 호출 판별은 구문으로 한다: `import static …VelInline.vel`(또는 `.*`) 뒤의 `vel(...)`, `VelInline.vel(...)`(import 시), `com.doubledeltas.vel.VelInline.vel(...)`.
 - **javac 내부 API 접근**: `JavacInternals`가 플러그인 시작 시 `jdk.compiler`의 `api/code/parser/tree/util` 패키지를 자기 모듈에 export한다(`sun.misc.Unsafe`로 `Module.implAddExports` 호출, Lombok과 같은 방식). 사용자는 `--add-exports`가 필요 없다. JDK가 바뀌면 확인 필요. `vel-javac`의 컴파일과 javadoc에는 `--add-exports`를 준다.
 - 테스트: `VelJavacPluginTest`가 실제로 컴파일·실행한다. `vel-examples`의 `Physics.kineticEnergy`(인라인)도 `PhysicsTest`에서 실행된다.
-- 아직: Kotlin 쪽 C 방식(`vel-kotlinc`, IR 단계)은 검사만 하고 치환하지 않는다.
+- Kotlin 쪽은 아래 "Kotlin 구체화기 구현 메모" 참고.
+
+### 공통 중간 코드와 Kotlin 구체화기 구현 메모 (2026-11-18)
+- **구조 (결정됨)**: `CodeGenerator`(VEL → 대상 언어와 무관한 `Code`: JVM 원시 타입·배열 위의 작은 명령형 언어) + 백엔드 3개. `JavaPrinter`(Java 소스; B는 메서드 본문, C는 switch 식), `KotlinPrinter`(Kotlin 소스, KSP의 `@Vel`), `vel-kotlinc`의 `IrEmitter`(Kotlin IR, 인라인 `vel(...)`). `JavaCodeGenerator`는 `CodeGenerator` + `JavaPrinter`를 감싼 얇은 겉면.
+- `Code`: 식 `Lit Ref Binary Neg Convert Call(Helper) Choose Fail Get Length NewArray`, 문장 `Let Var Declare Assign Store For If Return Throw`, `Body(statements, guarded)`. `guarded`면 백엔드가 범위 밖 예외를 `VelMath.outOfRange`로 바꾸는 try로 감싼다. 임시 이름은 `t__0`처럼 `__`(Java·Kotlin 모두 유효), VEL 변수가 Java/Kotlin 키워드면 `__`를 붙인다.
+- **KSP(`vel-ksp`)**: Kotlin 타입(원시, 원시 배열, `Array<…>`, `@Dim`) → `ConcreteType`, `<Owner>Vel`을 Kotlin 소스로 생성(인터페이스 구현, 추상 클래스는 `Owner()` 상속, 남은 추상 멤버가 있으면 `abstract class`). Kotlin 출력: `Char`는 `.code`/`.toChar()`, `Byte`/`Short`는 실수에서 `toInt()` 경유, 2차원 이상 배열은 `Array(n) { DoubleArray(m) }`.
+- **IR(`vel-kotlinc`)**: `IrGenerationExtension`에서 `VelInline.vel` 호출을 `IrEmitter`가 만든 블록으로 바꾼다. 보이는 이름은 매개변수·앞선 지역 변수·람다 매개변수(속성은 아직), 결과 타입은 호출의 추론 타입(`call.type`, 플랫폼 타입의 nullable은 무시). 산술·비교는 원시 클래스 멤버(`Double.plus`, `lessFunByOperandType`), 반복은 `while`, `Char.code`는 `kotlin` 패키지의 확장 속성.
+  - Kotlin 2.4에서 확인한 함정: 선언 조회는 `finderForSource(file)`을 쓴다. Java 정적 메서드(`VelMath`, `java.lang.Math`)는 `findFunctions`로 안 잡혀서 `findClass(...).owner.declarations`에서 찾는다. `arrayOfNulls`(reified, 내장 심볼도)는 플러그인이 만든 호출에서 인라인되지 않아 런타임 오류가 나므로, 2차원 이상 배열은 `VelMath.newArray(descriptor, lengths...)`(`java.lang.reflect.Array.newInstance`) 후 `irAs`로 캐스트한다.
+- 테스트: `VelSymbolProcessorTest`(생성 Kotlin을 컴파일·실행), `VelCompilerPluginTest`(인라인 IR을 컴파일·실행), `vel-examples-kotlin`의 `PhysicsTest`(Gradle에서 KSP + 플러그인).
 
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
