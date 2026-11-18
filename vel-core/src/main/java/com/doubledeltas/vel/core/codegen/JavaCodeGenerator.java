@@ -92,10 +92,14 @@ public final class JavaCodeGenerator {
     private final Map<String, Val> params = new LinkedHashMap<>();
     private final Map<String, Val> locals = new HashMap<>();
     private final Deque<String> ends = new ArrayDeque<>();
+    /** The type the result is concretized to; null to keep the value's own type. */
     private final ConcreteType returnType;
+    /** {@code return} for a method body, {@code yield} for an inline switch expression. */
+    private final String returnKeyword;
 
-    private JavaCodeGenerator(Map<String, ConcreteType> parameters, ConcreteType returnType) {
+    private JavaCodeGenerator(Map<String, ConcreteType> parameters, ConcreteType returnType, String returnKeyword) {
         this.returnType = returnType;
+        this.returnKeyword = returnKeyword;
         parameters.forEach((name, type) -> {
             javaNames.add(name);
             params.put(name, new Val(type.algebra(), type.element().resolution(), name, true));
@@ -111,10 +115,35 @@ public final class JavaCodeGenerator {
      */
     public static String methodBody(VelParser.ProgramContext program, Map<String, ConcreteType> parameters,
                                     ConcreteType returnType) {
-        JavaCodeGenerator g = new JavaCodeGenerator(parameters, returnType);
+        JavaCodeGenerator g = new JavaCodeGenerator(parameters, returnType, "return");
         g.program(program);
-        String body = g.out.toString();
-        if (!g.mayGoOutOfRange) {
+        return g.wrap();
+    }
+
+    /**
+     * A Java expression computing an inline VEL expression (style C): a switch expression whose block
+     * holds the generated statements, {@code switch (0) { default -> { …; yield result; } }}, so that
+     * loops can stand where an expression is expected.
+     *
+     * @param variables the Java variables visible at the call, by name
+     * @param target    the type the context expects (an assignment or a return), or null to keep the
+     *                  value's own type
+     * @throws VelCompileError when the expression is not well typed or uses what is not supported yet
+     */
+    public static String inlineExpression(VelParser.SingleExpressionContext expression,
+                                          Map<String, ConcreteType> variables, ConcreteType target) {
+        JavaCodeGenerator g = new JavaCodeGenerator(variables, target, "yield");
+        g.located(expression.expr(), () -> {
+            g.returnValue(g.expr(expression.expr()));
+            return null;
+        });
+        return "switch (0) { default -> {\n" + g.wrap() + "} }";
+    }
+
+    /** The generated statements, inside a try that reports out-of-range indices as null when needed. */
+    private String wrap() {
+        String body = out.toString();
+        if (!mayGoOutOfRange) {
             return body.replace("\n    ", "\n").replaceFirst("^    ", "");
         }
         return "try {\n" + body + "} catch (IndexOutOfBoundsException | NegativeArraySizeException e) {\n"
@@ -172,6 +201,15 @@ public final class JavaCodeGenerator {
             line("throw new " + VEL_EXCEPTION + "();");
             return;
         }
+        if (returnType == null) {
+            // no expected type: the value keeps its own resolution (a constant takes its default)
+            if (v.isScalar()) {
+                line(returnKeyword + " " + conv(v, resolve(v)) + ";");
+            } else {
+                line(returnKeyword + " " + arrayCode(v, v.res(), true) + ";");
+            }
+            return;
+        }
         ScalarType target = returnType.element();
         if ((target.algebra() == ScalarAlgebra.BOOL) != (v.alg().element() == ScalarAlgebra.BOOL)) {
             throw new VelTypeException("cannot return " + v.alg() + " as " + returnType);
@@ -180,12 +218,12 @@ public final class JavaCodeGenerator {
             if (!v.isScalar()) {
                 throw new VelTypeException("cannot return " + v.alg() + " as the scalar " + returnType);
             }
-            line("return " + conv(v, target.resolution()) + ";");
+            line(returnKeyword + " " + conv(v, target.resolution()) + ";");
             return;
         }
         checkShape(v.alg().dims(), returnType.dims(), "cannot return " + v.alg() + " as " + returnType + ":");
         Val array = v.isScalar() ? broadcastTo(v, returnType.dims()) : v;
-        line("return " + arrayCode(array, target.resolution(), true) + ";");
+        line(returnKeyword + " " + arrayCode(array, target.resolution(), true) + ";");
     }
 
     /** Known sizes must match; ⊤ matches anything. */

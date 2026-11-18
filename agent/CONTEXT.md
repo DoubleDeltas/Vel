@@ -214,6 +214,15 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - `vel-runtime`의 `VelMath`: 생성 코드가 부르는 도우미(`pow`, 실수 `floorDiv/truncDiv/floorMod`, `error`, `outOfRange`).
 - `VelProcessor`: `@Vel` 메서드마다 본문을 생성해 소유 타입별로 `<Owner>Vel`(중첩이면 `Outer_InnerVel`)을 만든다. 인터페이스는 `implements`, 추상 클래스는 `extends`. `@Vel`이 아닌 추상 메서드가 남으면 생성 클래스도 `abstract`. 제네릭 메서드·소유 타입은 아직 거부. 테스트는 생성 코드를 실제로 컴파일·실행한다(`JavaCodeGeneratorTest`, `VelProcessorTest`, `vel-examples`의 `PhysicsTest`).
 
+### C 방식(`vel("...")`) 구현 메모 (`vel-javac`, 2026-11-18 1차)
+- `InlineRewriter`가 `TaskEvent.Kind.ANALYZE` **시작** 시점(타입 분석 전)에 컴파일 단위마다 한 번 `vel("...")` 호출을 생성 코드로 바꾼다. 이후 javac가 생성 코드를 보통 코드처럼 분석·컴파일한다.
+- 생성 코드는 `JavaCodeGenerator.inlineExpression`의 switch 식 `switch (0) { default -> { …; yield 결과; } }`. 식 자리에 반복문 등 문장을 넣기 위해서다. 생성 트리는 `ParserFactory`로 파싱하고 모든 위치를 호출 위치로 맞춘다.
+- 타입 분석 전이므로 변수 타입은 선언에서 읽는다: 매개변수, 앞선 지역 변수, 필드(원시 타입·배열, `@Dim`). `var`나 다른 타입의 변수는 가려지지만 쓸 수 없다. 결과 타입은 문맥(`return`, 변수 선언, 대입)에서, 그 밖에는 값 자신의 타입(java.md 6.1).
+- 호출 판별은 구문으로 한다: `import static …VelInline.vel`(또는 `.*`) 뒤의 `vel(...)`, `VelInline.vel(...)`(import 시), `com.doubledeltas.vel.VelInline.vel(...)`.
+- **javac 내부 API 접근**: `JavacInternals`가 플러그인 시작 시 `jdk.compiler`의 `api/code/parser/tree/util` 패키지를 자기 모듈에 export한다(`sun.misc.Unsafe`로 `Module.implAddExports` 호출, Lombok과 같은 방식). 사용자는 `--add-exports`가 필요 없다. JDK가 바뀌면 확인 필요. `vel-javac`의 컴파일과 javadoc에는 `--add-exports`를 준다.
+- 테스트: `VelJavacPluginTest`가 실제로 컴파일·실행한다. `vel-examples`의 `Physics.kineticEnergy`(인라인)도 `PhysicsTest`에서 실행된다.
+- 아직: Kotlin 쪽 C 방식(`vel-kotlinc`, IR 단계)은 검사만 하고 치환하지 않는다.
+
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
 - 리터럴과 상수 접기 결과는 스칼라 `ArrayAlgebra`의 `constant`(`Constant.Int`/`Decimal`/`Rational`, 소수는 끝의 0을 정리한 정규형)로 들고 다닌다. 상수 접기는 `Constant.fold`(VEL 의미론). 리터럴 인덱스, 범위 길이, `^` 규칙이 이 값을 본다. 단항 `-`는 상수를 상수로 유지한다(`x * -1`이 `x`를 따르게).
@@ -253,7 +262,7 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   2. ~~Java 매핑(원시 타입과 그 배열, `@Dim`)~~ 1차 완료: `VelProcessor.concreteType`. 래퍼·`List`·`BigInteger`/`BigDecimal`·성분 객체는 아직.
   3. ~~타입 검사~~ 생성기 안에서 `TypeRules`로 수행(1차 완료)
   4. ~~B 방식 코드 생성(`<Owner>Vel` 구현 클래스)~~ 1차 완료(2026-11-18)
-  5. C 방식 치환(javac 플러그인, 내부 API 사용)
+  5. ~~C 방식 치환(javac 플러그인, 내부 API 사용)~~ 1차 완료(2026-11-18)
 
 ## 7. 작업 관례
 

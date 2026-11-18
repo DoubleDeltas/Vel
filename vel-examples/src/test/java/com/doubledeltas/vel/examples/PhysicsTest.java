@@ -13,4 +13,10 @@ class PhysicsTest {
         // p + v * dt + 0.5 * a * dt^2
         assertEquals(1 + 2 * 3 + 0.5 * 4 * 9.0, physics.position(1, 2, 4, 3));
     }
+
+    @Test
+    void kineticEnergyIsRewrittenFromInlineVel() {
+        // default method using vel("half * m * v^2"), rewritten by the javac plugin
+        assertEquals(0.5 * 2 * 9, new PhysicsVel().kineticEnergy(2, 3));
+    }
 }
