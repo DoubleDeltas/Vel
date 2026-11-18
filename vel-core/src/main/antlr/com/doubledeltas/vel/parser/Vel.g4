@@ -122,6 +122,8 @@ patternItem
 expr
     : primary                                               # primaryExpr
     | expr '.' ID '(' arguments? ')'                        # methodCallExpr
+    // Element-wise application `t.foo.(x)`, `Math.sqrt.(v)` (Julia-style dot call)
+    | expr '.' ID '.' '(' arguments? ')'                    # broadcastMethodCallExpr
     | expr '.' ID                                           # memberExpr
     | expr '[' indexList ']'                                # indexExpr
     | expr op=('\'' | '.\'')                                # transposeExpr
@@ -139,6 +141,8 @@ primary
     : NUMBER                                                # numberLiteral
     | ('true' | 'false')                                    # boolLiteral
     | (ID | QUOTED_ID) '(' arguments? ')'                   # callExpr
+    // Element-wise application `f.(x)`: f is applied to each element (type-system.md 1.9)
+    | (ID | QUOTED_ID) '.' '(' arguments? ')'               # broadcastCallExpr
     | ID                                                    # identifier
     | QUOTED_ID                                             # quotedIdentifier
     | '(' expr ')'                                          # parenExpr

@@ -165,6 +165,23 @@ class VelFrontendTest {
     }
 
     @Test
+    void elementWiseApplication() {
+        // f.(x) applies f to each element; f(x) is an ordinary call
+        assertEquals("(singleExpression (expr (primary sqrt . ( (arguments (expr (primary v))) ))) <EOF>)",
+                tree("sqrt.(v)"));
+        assertEquals("(singleExpression (expr (primary f . ( (arguments (expr (primary A)) , (expr (primary x))) ))) <EOF>)",
+                tree("f.(A, x)"));
+        // methods: Math.sqrt.(v)
+        assertEquals("(singleExpression (expr (expr (primary Math)) . sqrt . ( (arguments (expr (primary v))) )) <EOF>)",
+                tree("Math.sqrt.(v)"));
+        // a postfix like any call: sin.(x) .+ 1
+        assertEquals("(singleExpression (expr (expr (primary sin . ( (arguments (expr (primary x))) ))) .+ (expr (primary 1))) <EOF>)",
+                tree("sin.(x) .+ 1"));
+        // a number is not a function: 2.(x) is an error
+        assertTrue(VelFrontend.parseExpression("2.(x)").hasErrors());
+    }
+
+    @Test
     void boolLiteralsAndImaginaryUnitIdentifier() {
         assertEquals("(singleExpression (expr (primary true)) <EOF>)", tree("true"));
         assertEquals("(singleExpression (expr (primary false)) <EOF>)", tree("false"));
