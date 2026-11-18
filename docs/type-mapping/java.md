@@ -207,7 +207,7 @@ VEL 식은 대수만 다룬다(VEL 타입 시스템 0.3절, 3장). 실제 계산
 
 VEL 지역 변수에 대입하는 것은 구체화 지점이 아니다.
 
-$\mathrm{Not}$ 대수의 식(`error()`)은 구체화하면 예외를 던지는 코드가 된다. 값이 없으므로 어떤 Java 타입의 자리에도 쓸 수 있다.
+$\mathrm{Not}$ 대수의 식(`error()`)은 구체화하면 `throw new com.doubledeltas.vel.VelException()`이 된다. `VelException`은 `vel-runtime`에 있으며 `RuntimeException`을 상속하므로 `throws` 선언이 필요 없다. ⊥나 ⊤ → Int 변환 오류는 이와 달리 `NullPointerException`이다. 값이 없으므로 어떤 Java 타입의 자리에도 쓸 수 있다.
 
 ### 7.2. 표현 순서
 해상도 $A$의 모든 값을 해상도 $B$가 **정확히** 표현할 수 있을 때 $A \sqsubseteq B$로 쓴다.

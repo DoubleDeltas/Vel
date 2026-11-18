@@ -80,7 +80,7 @@ $\mathrm{Bool}$은 다른 스칼라 대수와 위계를 갖지 않는다. $\math
 **$\mathrm{Not}$**은 원소가 없는 대수다. 값을 내지 않고 끝나는 식, 즉 실행하면 오류가 나는 식의 대수다.
 - 모든 대수의 하위 대수다: 모든 $\mathbb K$에 대해 $\mathrm{Not} <: \mathbb K$, $\mathrm{Not} \vee \mathbb K = \mathbb K$. 그래서 조건식의 가지나 `return`에 섞여도 결과 대수를 바꾸지 않는다.
 - $\mathrm{Not}$이 피연산자인 연산의 결과도 $\mathrm{Not}$이다(그 연산까지 실행이 이어지지 않는다).
-- 내장 함수 `error()`는 인자가 없고 대수가 $\mathrm{Not}$인 식이다. 실행하면 예외를 던진다. 예: `if n == inf then error() else fibo(n)`
+- 내장 함수 `error()`는 인자가 없고 대수가 $\mathrm{Not}$인 식이다. 실행하면 예외를 던진다(Java에서는 `com.doubledeltas.vel.VelException`, Java 매핑 7.1절). 예: `if n == inf then error() else fibo(n)`
 - $\mathrm{Card}$의 무효 원소 $\bot$(null)과 다르다. $\bot$은 $\mathrm{Card}$ 안의 값이고, $\mathrm{Not}$에는 값이 없다.
 
 ### 1.2. 크기가 $\top$인 차원
