@@ -201,6 +201,19 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
   - 범위 밖 접근(`ArrayIndexOutOfBoundsException` 등)은 NPE로 보고한다.
   - jagged 배열: 안쪽 차원을 `⊤`로 보고 같은 규칙(범위 밖은 null → NPE)을 따른다.
 
+### Java 구체화기 구현 메모 (`vel-core` `core.codegen`, 2026-11-18 1차)
+- `JavaCodeGenerator.methodBody(program, params, returnType)`: 파스 트리를 직접 따라가며 대수(`TypeRules`)와 해상도(`Promotion`)를 정하고 Java 문장을 낸다. 결과는 메서드 본문 문자열. 오류는 위치가 붙은 `VelCompileError`(줄 1부터, 열 0부터).
+- `ConcreteType`(모양 + `ScalarType`)이 경계의 타입이다. Java 배열은 java.md 2절대로 VEL 차원 k = 안쪽에서 k번째 배열 단계, 끝의 크기 1 차원은 표현하지 않는다(`Vec(n)` = `T[]`, `Mat(m, n)` = `T[n][m]`, `Mat(1, n)` = `T[n][1]`). `JavaTypes`: 해상도 → Java 원시 타입(가장 좁은 것; `Z+16`은 `char`, 그 밖의 `Z+n`은 부호 있는 n+1비트).
+- 값 모델(`Val`): 대수, 원소 해상도(상수·Not이면 null), Java 코드(스칼라는 식, 배열은 변수 이름), `external`(Java 소유 배열이라 밖으로 나갈 때 복사).
+- 스칼라 연산은 피연산자를 결과 해상도로 캐스트해 계산한다(`Int / Int` → `(double) a / (double) b`). 몫·나머지는 `Math.floorDiv/floorMod`, 실수는 `VelMath`. `^`는 음이 아닌 정수 상수면 `VelMath.pow`, 아니면 `Math.pow`. Bool `+ * o+`는 `|| && ^`.
+- 상수는 Java 변수를 만들지 않고 상수로 남는다(`k = 2` 뒤 `k * x`도 `x`를 따른다). 리터럴은 상대 해상도의 Java 리터럴로 낸다(`0.5f`, `2L`, 분수는 34자리 십진).
+- 배열 연산은 반복문(바깥 루프 = 마지막 VEL 차원): 원소별 연산과 브로드캐스팅(⊤ 길이는 `Math.max`), 행렬 곱, 전치, 행렬 리터럴(블록 연결), 튜플 쌓기, 범위 값, 인덱싱(`end`, 범위, `:`, 벡터 단일 첨자), 인덱스 대입(항상 복사 후 쓰기), 구조 분해.
+- 조건식은 가지에 문장이 필요하면 `if/else` 블록으로 내서 고른 가지만 평가한다. `error()`는 `VelMath.<T>error()`, `return error()`는 `throw new VelException()`.
+- 범위 밖·음수 인덱스·음수 길이(⊥)는 본문을 `try { … } catch (IndexOutOfBoundsException | NegativeArraySizeException e) { throw VelMath.outOfRange(e); }`로 감싸 `NullPointerException`으로 바꾼다(java.md 2.2).
+- 아직 지원하지 않음(컴파일 오류로 보고): 함수·메서드 호출(`error()` 제외), 멤버 접근, 함수 리터럴, Complex/`j`, 값으로서의 `inf`, Z∞·Dn·D∞, 행렬 나눗셈·행렬 거듭제곱, 분할, Bool 행렬 곱.
+- `vel-runtime`의 `VelMath`: 생성 코드가 부르는 도우미(`pow`, 실수 `floorDiv/truncDiv/floorMod`, `error`, `outOfRange`).
+- `VelProcessor`: `@Vel` 메서드마다 본문을 생성해 소유 타입별로 `<Owner>Vel`(중첩이면 `Outer_InnerVel`)을 만든다. 인터페이스는 `implements`, 추상 클래스는 `extends`. `@Vel`이 아닌 추상 메서드가 남으면 생성 클래스도 `abstract`. 제네릭 메서드·소유 타입은 아직 거부. 테스트는 생성 코드를 실제로 컴파일·실행한다(`JavaCodeGeneratorTest`, `VelProcessorTest`, `vel-examples`의 `PhysicsTest`).
+
 ### 타입 모델 구현 메모 (`vel-core` `core.type`, `core.concretization`)
 - `ArrayAlgebra`는 차원을 정규형으로 둔다: 랭크는 최소 2(`Array(n)` = `Vec(n)` = `Mat(n,1)`), 2번째 이후 끝의 크기 1 차원은 지운다. 그래서 문서의 정의가 `equals`로 성립한다.
 - 리터럴과 상수 접기 결과는 스칼라 `ArrayAlgebra`의 `constant`(`Constant.Int`/`Decimal`/`Rational`, 소수는 끝의 0을 정리한 정규형)로 들고 다닌다. 상수 접기는 `Constant.fold`(VEL 의미론). 리터럴 인덱스, 범위 길이, `^` 규칙이 이 값을 본다. 단항 `-`는 상수를 상수로 유지한다(`x * -1`이 `x`를 따르게).
@@ -237,9 +250,9 @@ VEL 코드를 어디에 쓰느냐에 따라 세 가지 방식이 있다.
 - [ ] `java.md` 각주: `Character.codePointAt(char[], 0)` 표현이 부정확하다. `char` 하나의 값은 그냥 `(int) c`다.
 - [ ] 구현 순서 제안
   1. ~~`vel-core` 타입 모델(크기 `⊤`, 브로드캐스팅, 연결 포함)~~ 완료
-  2. Java 매핑 모듈(`TypeMirror → VEL 타입`, `@Dim` 읽기, javax.lang.model 의존, 예: `vel-java-model`)
-  3. 타입 검사
-  4. B 방식 코드 생성(`<Owner>Vel` 구현 클래스)
+  2. ~~Java 매핑(원시 타입과 그 배열, `@Dim`)~~ 1차 완료: `VelProcessor.concreteType`. 래퍼·`List`·`BigInteger`/`BigDecimal`·성분 객체는 아직.
+  3. ~~타입 검사~~ 생성기 안에서 `TypeRules`로 수행(1차 완료)
+  4. ~~B 방식 코드 생성(`<Owner>Vel` 구현 클래스)~~ 1차 완료(2026-11-18)
   5. C 방식 치환(javac 플러그인, 내부 API 사용)
 
 ## 7. 작업 관례

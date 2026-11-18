@@ -7,6 +7,7 @@ def antlrVersion = '4.13.2'
 dependencies {
     antlr "org.antlr:antlr4:${antlrVersion}"
     api "org.antlr:antlr4-runtime:${antlrVersion}"
+    testImplementation project(":vel-runtime") // VelMath, called by generated code
 }
 
 // The antlr plugin makes `api` extend `antlr`, leaking the whole ANTLR tool to consumers.
