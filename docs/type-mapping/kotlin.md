@@ -53,8 +53,8 @@ $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$의 정밀도 처리와 $\langle
 `Collection`, `Iterable`, `Sequence` 등 인덱스 접근이 보장되지 않는 타입은 시퀀스로 취급하지 않는다.
 
 차원의 순서는 Java와 같다. 원소가 스칼라 타입 $\langle \mathbb K \rangle_R$인 시퀀스에 대해
-- 길이 $n$인 1차원 시퀀스(예: `DoubleArray`)는 $\langle\mathrm{Vec}(n, \mathbb K)\rangle_R$로 취급한다.
-- 2차원 시퀀스(예: 길이 $m$인 `Array<DoubleArray>`, 각 원소의 길이 $n$)는 $\langle\mathrm{Mat}(n, m, \mathbb K)\rangle_R$로 취급한다.
+- 길이 $n$인 1차원 시퀀스(예: `DoubleArray`)는 $\langle\mathbb K^{n}\rangle_R$로 취급한다.
+- 2차원 시퀀스(예: 길이 $m$인 `Array<DoubleArray>`, 각 원소의 길이 $n$)는 $\langle\mathbb K^{(n, m)}\rangle_R$로 취급한다.
 
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
@@ -65,13 +65,13 @@ Kotlin에서는 `value` 인자를 가변 인자처럼 `@Dim(3, 4)`로, 이름 �
 
 | Kotlin 선언 | VEL 타입 |
 | --- | --- |
-| `v: DoubleArray` | $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(3) v: DoubleArray` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(3, 4) m: Array<DoubleArray>` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(java = [3]) v: DoubleArray` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ (위와 같음) |
-| `@Dim(java = [Dim.TOP, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Mat}(3, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
+| `v: DoubleArray` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ |
+| `@Dim(3) v: DoubleArray` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
+| `@Dim(3, 4) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = [3]) v: DoubleArray` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ (위와 같음) |
+| `@Dim(java = [Dim.TOP, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, \top)}\rangle_{\mathrm{F}64}$ |
 
 `@Dim`은 Java 어노테이션이므로 Kotlin 속성에 붙일 때는 적용 대상을 밝히는 것을 권장한다.
 - 생성자 매개변수: `@param:Dim(...)`
@@ -89,26 +89,26 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). Kotlin에서 넘겨받은 
 ## 3. Kotlin 구조분해
 연산자 `component1()`, …, `componentN()`을 참조할 수 있는 객체(예: `Pair`, `Triple`, data class)는 **성분 객체**이며, Java 매핑 2.5절의 규칙으로 배열이 된다.
 
-각 성분 타입 $C_i \mapsto \langle\mathrm{Array}(\mathbf d_i, \mathbb K_i)\rangle_{R_i}$의 모양 $\mathbf d_i$가 모두 같고 스칼라 대수에 상한 $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$이 있으면
+각 성분 타입 $C_i \mapsto \langle\mathbb K_i^{\mathbf d_i}\rangle_{R_i}$의 모양 $\mathbf d_i$가 모두 같고 스칼라 대수에 상한 $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$이 있으면
 
-$$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
+$$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
 
-이다. 성분이 스칼라면 $\langle\mathrm{Vec}(N, \mathbb K)\rangle_R$, 길이 $M$인 벡터면 $\langle\mathrm{Mat}(N, M, \mathbb K)\rangle_R$(성분 $i$가 $i$번째 행)다. 스칼라 대수가 다르면 상한을, 해상도가 다르면 넓은 쪽을 따른다.
+이다. 성분이 스칼라면 $\langle\mathbb K^{N}\rangle_R$, 길이 $M$인 벡터면 $\langle\mathbb K^{(N, M)}\rangle_R$(성분 $i$가 $i$번째 행)다. 스칼라 대수가 다르면 상한을, 해상도가 다르면 넓은 쪽을 따른다.
 
 | Kotlin 타입 | VEL 타입 |
 | --- | --- |
-| `Pair<Double, Double>` | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `Pair<Int, Double>` | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `Triple<Float, Float, Float>` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}32}$ |
-| `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `data class V(val x: Double, val y: Double, val z: Double)` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
+| `Pair<Double, Double>` | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
+| `Pair<Int, Double>` | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
+| `Triple<Float, Float, Float>` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}32}$ |
+| `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Real}^{(2, \top)}\rangle_{\mathrm{F}64}$ |
+| `data class V(val x: Double, val y: Double, val z: Double)` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `Pair<Int, Boolean>` | 배열이 아님 (스칼라 대수의 상한이 없음) |
 
 반대로 VEL 값이 성분 객체 타입으로 나갈 때는 성분별로 나눠 그 객체로 감싼다(Java 매핑 5절).
 
 ```kotlin
 fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
-// VEL 값 ⟨Vec(2, Real)⟩_F64를 Pair(-y, x)로 감싼다
+// VEL 값 ⟨Real^2⟩_F64를 Pair(-y, x)로 감싼다
 ```
 
 ## 4. 함수

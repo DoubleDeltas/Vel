@@ -60,8 +60,8 @@ JDK에는 $\langle\mathrm{Real}\rangle_{\mathrm{D}n}$에 대응하는 타입이 
 - `java.util.List`(`List<Integer>`)
 
 원소가 스칼라 타입 $\langle \mathbb K \rangle_R$(스칼라 대수 $\mathbb K$, 해상도 $R$)인 시퀀스에 대해
-- 길이 $n$인 1차원 시퀀스 `a[n]`은 $\langle\mathrm{Vec}(n, \mathbb K)\rangle_R$로 취급한다.
-- 2차원 시퀀스 `a[m][n]`은 $\langle\mathrm{Mat}(n, m, \mathbb K)\rangle_R$로 취급한다.
+- 길이 $n$인 1차원 시퀀스 `a[n]`은 $\langle\mathbb K^{n}\rangle_R$로 취급한다.
+- 2차원 시퀀스 `a[m][n]`은 $\langle\mathbb K^{(n, m)}\rangle_R$로 취급한다.
 
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
@@ -70,20 +70,20 @@ Java 배열과 `List`의 길이는 컴파일 타임에 알 수 없으므로, 각
 
 `@Dim` 어노테이션으로 크기를 지정할 수 있다. 다음 중 **정확히 하나**를 쓴다. 둘 이상 쓰거나 모두 생략하면 컴파일 오류(`VelTypeException`)다.
 - `value`(기본 요소, `@Dim(...)`): `vel`과 같다.
-- `vel`: **VEL 순서**(행 먼저. $\mathrm{Mat}(m, n)$이면 `{m, n}`)
+- `vel`: **VEL 순서**(행 먼저. $\mathbb K^{(m, n)}$이면 `{m, n}`)
 - `java`: **Java 선언 순서**(바깥 배열부터)
 
 2절의 매핑 때문에 VEL 순서와 Java 순서는 서로 뒤집혀 있다. 모르는 차원은 `Dim.TOP`으로 둔다.
 
 | Java 선언 | VEL 타입 |
 | --- | --- |
-| `double[] v` | $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(3) double[] v` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim({3, 4}) double[][] m` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(java = 3) double[] v` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(java = {4, 3}) double[][] m` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `@Dim(vel = {3, 4}) double[][] m` | $\langle\mathrm{Mat}(3, 4, \mathrm{Real})\rangle_{\mathrm{F}64}$ (위와 같음) |
-| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\langle\mathrm{Mat}(3, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
+| `double[] v` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ |
+| `@Dim(3) double[] v` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
+| `@Dim({3, 4}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = 3) double[] v` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = {4, 3}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(vel = {3, 4}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ (위와 같음) |
+| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\langle\mathrm{Real}^{(3, \top)}\rangle_{\mathrm{F}64}$ |
 
 `@Dim`은 매개변수, 필드, 지역 변수, 메서드(반환값)에 붙일 수 있다.
 - 지정한 크기는 신뢰하며 런타임에 검사하지 않는다.
@@ -110,23 +110,23 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). 따라서 Java에서 넘�
 - `record`: 레코드 구성 요소(선언 순서)
 - 메서드 `component1()`, …, `componentN()`이 있는 클래스(예: Kotlin의 `Pair`, `Triple`, data class): 각 메서드의 반환 타입
 
-각 성분 타입이 VEL 타입 $C_i \mapsto \langle\mathrm{Array}(\mathbf d_i, \mathbb K_i)\rangle_{R_i}$로 변환되고, 다음을 만족하면 $T$는 배열 타입이다.
+각 성분 타입이 VEL 타입 $C_i \mapsto \langle\mathbb K_i^{\mathbf d_i}\rangle_{R_i}$로 변환되고, 다음을 만족하면 $T$는 배열 타입이다.
 - 모든 성분 대수의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ ($\top$은 VEL 타입 시스템 1.2절을 따른다)
 - 모든 성분의 스칼라 대수에 상한이 있다: $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$ (VEL 타입 시스템 3.1절)
 
-$$ T \mapsto \langle\mathrm{Array}(N, \mathbf d, \mathbb K)\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
+$$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
 
 즉 성분의 모양 앞에 크기 $N$인 차원을 붙인다. 성분 $i$는 첫 인덱스가 $i$인 부분 $T[i, \cdots]$다. 스칼라 대수가 서로 다르면 상한($\vee$)을, 해상도가 서로 다르면 넓은 쪽($\sqcup$, 7.3절)을 따른다. 예를 들어 $\mathrm{Int}$와 $\mathrm{Real}$ 성분이 섞이면 $\mathrm{Real}$이 되고, 해상도도 실수 해상도가 된다. 위 조건을 만족하지 않는 객체는 배열이 아니다.
-- 성분이 스칼라면 $\mathrm{Array}(N) = \mathrm{Vec}(N)$이다.
-- 성분이 길이 $M$인 벡터면 $\mathrm{Array}(N, M, 1) = \mathrm{Mat}(N, M)$이다. 성분 $i$는 $i$번째 행이다.
+- 성분이 스칼라면 $\mathbb K^{(N)} = \mathbb K^{N}$이다.
+- 성분이 길이 $M$인 벡터면 $\mathbb K^{(N, M, 1)} = \mathbb K^{(N, M)}$이다. 성분 $i$는 $i$번째 행이다.
 - 성분이 행렬이면 3차원 배열이 된다.
 
 | $T$ | 성분 | VEL 타입 |
 | --- | --- | --- |
-| `record P(double x, double y)` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `record Q(int a, double b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Vec}(2, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$, $\langle\mathrm{Vec}(3, \mathrm{Real})\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Mat}(2, 3, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `record S(double[] u, double[] v)` | $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$, $\langle\mathrm{Vec}(\top, \mathrm{Real})\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Mat}(2, \top, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
+| `record P(double x, double y)` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
+| `record Q(int a, double b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
+| `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{(2, 3)}\rangle_{\mathrm{F}64}$ |
+| `record S(double[] u, double[] v)` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{(2, \top)}\rangle_{\mathrm{F}64}$ |
 | `record B(int a, boolean b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Bool}\rangle$ | 배열이 아님 (스칼라 대수의 상한이 없음) |
 
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
@@ -190,8 +190,8 @@ VEL이 미리 선언한 이름(`j`, `end`, 내장 함수 `abs` 등)은 같은 �
 ```java
 record Point(double x, double y) {}
 
-@Vel("(-p[1], p[0])")        // Point는 ⟨Vec(2, Real)⟩_F64이므로 성분을 인덱스로 읽는다
-Point rotate90(Point p);     // 결과 ⟨Vec(2, Real)⟩_F64를 new Point(…, …)로 감싼다
+@Vel("(-p[1], p[0])")        // Point는 ⟨Real^2⟩_F64이므로 성분을 인덱스로 읽는다
+Point rotate90(Point p);     // 결과 ⟨Real^2⟩_F64를 new Point(…, …)로 감싼다
 ```
 
 ## 6. Java 문자열 안의 VEL
@@ -222,7 +222,7 @@ VEL 식은 대수만 다룬다(VEL 타입 시스템 0.3절, 3장). 실제 계산
 
 VEL 지역 변수에 대입하는 것은 구체화 지점이 아니다.
 
-$\mathrm{Not}$ 대수의 식(`error()`)은 구체화하면 `throw new com.doubledeltas.vel.VelException()`이 된다. `VelException`은 `vel-runtime`에 있으며 `RuntimeException`을 상속하므로 `throws` 선언이 필요 없다. ⊥나 ⊤ → Int 변환 오류는 이와 달리 `NullPointerException`이다. 값이 없으므로 어떤 Java 타입의 자리에도 쓸 수 있다.
+$\mathrm{Not}$ 대수의 식(`error()`)은 구체화하면 `throw new com.doubledeltas.vel.VelException()`이 된다. `VelException`은 `vel-runtime`에 있으며 `RuntimeException`을 상속하므로 `throws` 선언이 필요 없다. 서수 연산의 오류(음수 서수, ⊤ → Int 변환, 타입 시스템 1.1절)는 이와 달리 `NullPointerException`이다. 값이 없으므로 어떤 Java 타입의 자리에도 쓸 수 있다.
 
 ### 7.2. 표현 순서
 해상도 $A$의 모든 값을 해상도 $B$가 **정확히** 표현할 수 있을 때 $A \sqsubseteq B$로 쓴다.
@@ -339,6 +339,6 @@ $\mathrm{D}\infty$는 **중간 계산에서 반올림 오차를 최대한 누적
 
 ### 7.7. 배열
 배열 간 원소별 연산의 원소 해상도는 위 규칙을 원소 해상도에 적용해 정한다.
-$$ \langle\mathrm{Array}(\mathbf d, \mathbb K_1)\rangle_A \circ \langle\mathrm{Array}(\mathbf d, \mathbb K_2)\rangle_B \;\Rightarrow\; \text{원소 해상도 } A \sqcup B $$
+$$ \langle\mathbb K_1^{\mathbf d}\rangle_A \circ \langle\mathbb K_2^{\mathbf d}\rangle_B \;\Rightarrow\; \text{원소 해상도 } A \sqcup B $$
 
 [^1]: `Character.codePointAt(char[], 0)`를 이용해 코드포인트 값을 취급한다.
