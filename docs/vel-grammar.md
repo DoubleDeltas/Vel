@@ -173,7 +173,7 @@ VEL의 모든 값은 불변이며, 인덱스 대입은 **복사 후 다시 쓰�
 | 순위 | 연산 | 결합 |
 | --- | --- | --- |
 | 1 | 기본 항 (4.2절) | |
-| 2 | 후위: 메서드 호출 `e.f(…)`, 원소별 메서드 호출 `e.f.(…)`, 멤버 `e.x`, 인덱스 `e[…]`, 전치 `e'` `e.'` | 왼쪽 |
+| 2 | 후위: 함수 값 호출 `e(…)`, 메서드 호출 `e.f(…)`, 원소별 메서드 호출 `e.f.(…)`, 멤버 `e.x`, 인덱스 `e[…]`, 전치 `e'` `e.'` | 왼쪽 |
 | 3 | 거듭제곱 `^` `.^` | **오른쪽** |
 | 4 | 단항 `-` `+` | 접두 |
 | 5 | 곱셈 계열 `*` `/` `/>` `/<` `//` `///` `%%` `%%%` `.*` `./` | 왼쪽 |
@@ -233,6 +233,7 @@ E = exp.(A)               # 원소별 지수 (exp(A)는 행렬 지수)
 | 형태 | 설명 |
 | --- | --- |
 | `t.foo(x)` | 동적 메서드 호출. `foo(t, x)`로는 부를 수 없다. |
+| `e(x)` | 함수 값 호출. 함수를 내는 식 뒤에 바로 쓴다: `add(1)(2)`, `(x => x + 1)(2)` (타입 시스템 1.10절 커링) |
 | `t.foo.(x)`, `T.foo.(x)` | 메서드의 원소별 적용(4.2절) |
 | `T.foo{double}`, `t.foo{int, int}(x)` | **시그니처 지정**: 매개변수 타입을 타깃 언어의 타입으로 써서 오버로딩 중 하나를 고른다. 호출 없이 쓰면 함수 값이다(Java 매핑 3.1절). |
 | `T.foo(x)` | 정적 메서드 호출(`java.lang.Math.sqrt(x)`처럼 정규화된 이름도 가능) |
@@ -300,6 +301,7 @@ VEL은 MATLAB처럼 **행렬 연산자**와 **성분별 연산자**를 구분한
 
 - 첨자의 개수는 배열의 랭크와 같아야 한다. 벡터는 첨자 하나로 인덱싱할 수 있다(`v[end-1]`: 마지막 원소).
 - `end`와 `:`는 인덱스 안에서만 쓴다.
+- 첨자 하나에 벡터를 넣어 여러 차원을 고를 수는 없다: `I = (1, 2)`일 때 `A[I]`는 오류다. 대신 배열을 **호출**하면 된다: `A(I)` = `A(1, 2)` = `A[1, 2]`. 호출은 위치 하나만 고르며 범위·`:`·`end`는 쓸 수 없다(타입 시스템 1.6절).
 
 ```
 m[1, :]         # 1번 행
@@ -360,7 +362,7 @@ y = if c
 
 ```
 f = (a: Real, b: Real) => sqrt(a^2 + b^2)
-g = ((x, y): Real^2) => sqrt(x^2 + y^2)     # f와 같은 대수 Func(Real^2, Real)
+g = ((x, y): Real^2) => sqrt(x^2 + y^2)     # f와 같은 대수 Real^2 => Real
 h = i => x[i]                       # 매개변수 하나는 괄호와 대수를 생략할 수 있다(추론될 때)
 fibo = (n: Card) => {
   if n == inf then return inf
@@ -373,6 +375,8 @@ fibo = (n: Card) => {
 - 매개변수의 대수는 `Real`, `Card`, `Real^2`, `Complex^(inf, 3)`, `Real * Real^3`, `Unit`처럼 쓴다. `*`는 곱이며 결합하지 않는다(타입 시스템 1.4.1절). 괄호로 묶을 수 있다: `(Real * Real) * Real`
 - **거듭 곱** `K^n`, `K^(m, n)`, `K^(d₁, …, dₖ)`은 같은 대수 `K`를 곱한 배열이다(타입 시스템 1.1절): `Real^3`은 길이 3인 열벡터, `Real^(3, 4)`는 3×4 행렬, `Real^inf`는 길이 ⊤인 벡터. 지수는 서수 리터럴, `inf`, 또는 괄호로 묶은 서수 목록이다. `^`는 `*`보다 먼저 묶인다: `Real * Real^3`은 `Real * (Real^3)`이다. `K^(d₁, …)`의 `K`가 다시 거듭 곱이면 차원이 안쪽에 붙는다: `(Real^3)^2 = Real^(2, 3)`.
 - 이전 표기 `Vec(n, K)`, `Mat(m, n, K)`, `Array(d₁, …, dₖ, K)`는 거듭 곱의 별칭이다.
+- **함수 대수** `A => B`는 `A`를 받아 `B`를 돌려주는 함수다(타입 시스템 1장). `=>`는 오른쪽 결합이고 `*`보다 나중에 묶인다: `Real => Real => Real`은 `Real => (Real => Real)`(커링), `Real * Real => Real`은 `(Real * Real) => Real`. 함수를 받는 함수는 `(Real => Real) => Real`처럼 괄호로 쓴다.
+- 매개변수 자리의 함수 대수는 괄호 없이 쓸 수 있다: `(g: Real => Real, x: Real) => g(x)`. 반환 대수가 함수 대수면 괄호로 감싼다: `add(x: Real): (Real => Real) => (y: Real) => x + y`. 괄호가 없으면 `=>`가 정의의 화살표로 읽힌다.
 - 매개변수 목록은 인자 하나의 구조 분해다. `f(3, 4)`와 `f((3, 4))`는 같은 호출이다.
 - 블록 `{ … }` 안에서는 줄바꿈이 다시 문장 구분자다. 블록이 괄호 안에 있어도 그렇다.
 - 매개변수의 `:`는 범위 연산자와 같은 기호지만, `=>`가 뒤따르는지로 구분한다. `(a:b, c:d)`는 범위의 튜플이다.
@@ -399,7 +403,7 @@ sep              = NEWLINE | ";"
 
 statement = "return" expr
           | "if" expr NEWLINE* "then" statement
-          | name "(" (parameter ("," parameter)*)? ")" (":" algebra)? "=>" (expr | block)
+          | name "(" (parameter ("," parameter)*)? ")" (":" algebraProduct)? "=>" (expr | block)
           | name "{" algebra "}" "=" expr
           | pattern "=" expr
           | target assignOp expr
@@ -417,6 +421,7 @@ expr = primary
      | expr "." ID signature? "." "(" arguments? ")"
      | expr "." ID signature
      | expr "." ID
+     | expr "(" arguments? ")"                                  (함수 값 호출)
      | expr "[" indexList "]"
      | expr ("'" | ".'")
      | expr ("^" | ".^") expr                                   (오른쪽 결합)
@@ -441,7 +446,8 @@ arguments = expr ("," expr)*
 signature = "{" (typeName ("," typeName)*)? "}"            (VEL 함수: "{" algebra "}")
 parameters = name | "(" (parameter ("," parameter)*)? ")"
 parameter  = (name | pattern) (":" algebra)?
-algebra    = algebraPower ("*" algebraPower)*               (결합하지 않는 곱)
+algebra    = algebraProduct ("=>" algebra)?                  (함수 대수, 오른쪽 결합)
+algebraProduct = algebraPower ("*" algebraPower)*         (결합하지 않는 곱)
 algebraPower = algebraAtom ("^" (NUMBER | name | "(" arguments ")"))?   (거듭 곱)
 algebraAtom = name ("(" arguments ")")? | "(" algebra ")"     (Vec, Mat, Array는 별칭)
 block      = "{" sep* (statement (sep+ statement)*)? sep* "}"

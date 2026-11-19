@@ -132,7 +132,7 @@ $$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup 
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)
 정적 메소드와 함수형 인터페이스의 유일한 함수의 모든 인자 타입과 반환 타입이 VEL로 변환 가능하다면 VEL의 함수 타입으로 취급한다.
 
-`T` 타입의 동적 메소드 `R foo(U bar)`는 가장 첫 인자를 `T`로 취급해 $\mathrm{Func}(T \times U, R)$로 변환한다.
+`T` 타입의 동적 메소드 `R foo(U bar)`는 가장 첫 인자를 `T`로 취급해 $T * U \Rightarrow R$로 변환한다.
 
 호출 문법은 Java를 따른다.
 - 동적 메소드: `t.foo(x)`. `foo(t, x)` 형태로는 부를 수 없다.
@@ -150,7 +150,7 @@ Java 메서드의 시그니처는 **이름과 매개변수 타입 목록**이다
 - 호출 없이 쓰면 **함수 값**이다. 이 값은 메서드의 타입을 추상화한 함수 대수를 갖는다(3절).
 
 ```
-abs = Math.abs{double}   # ⟨Func(Real, Real)⟩_F64
+abs = Math.abs{double}   # ⟨Real => Real⟩_F64
 return abs(-2)           # -2는 매개변수 해상도 F64로 구체화되어 2.0
 ```
 

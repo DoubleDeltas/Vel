@@ -117,7 +117,7 @@ fun rotate90(x: Double, y: Double): Pair<Double, Double> = vel("(-y, x)")
 - `fun interface`의 유일한 추상 함수
 - 최상위 함수, `object`·`companion object`의 함수
 
-`T` 타입의 멤버 함수와 **확장 함수** `fun T.foo(bar: U): R`는 수신 객체를 첫 인자로 취급해 $\mathrm{Func}(T \times U, R)$로 변환한다.
+`T` 타입의 멤버 함수와 **확장 함수** `fun T.foo(bar: U): R`는 수신 객체를 첫 인자로 취급해 $T * U \Rightarrow R$로 변환한다.
 
 호출 문법은 Kotlin을 따른다.
 - 멤버 함수, 확장 함수: `t.foo(x)`. `foo(t, x)` 형태로는 부를 수 없다.

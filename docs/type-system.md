@@ -33,13 +33,15 @@ $$ \text{입력 타입} \xrightarrow{\text{추상화}} \text{대수} \xrightarro
 
 ## 1. 대수의 구성
 VEL의 모든 객체는 **함수**로 취급한다. 즉 VEL에서 함수는 일급(first-class) 객체다.
-$$ X <: \mathrm{Func}(A, B)$$
+$$ X <: (A \Rightarrow B)$$
 
-$\mathrm{Func}(A, B)$는 $A$를 받아 $B$를 돌려주는 함수의 대수다. $A$와 $B$도 대수다. 함수 타입에 해상도를 적용하는 규칙은 2장에서 다룬다.
+**함수 대수** $A \Rightarrow B$는 $A$를 받아 $B$를 돌려주는 함수의 대수다. $A$와 $B$도 대수다. VEL 소스에서는 `A => B`로 쓴다(VEL 문법 4.11절). 함수 타입에 해상도를 적용하는 규칙은 2장에서 다룬다.
+- $\Rightarrow$는 **오른쪽 결합**이다: $A \Rightarrow B \Rightarrow C = A \Rightarrow (B \Rightarrow C)$. 함수를 돌려주는 함수, 즉 **커링**된 함수의 대수다(1.10절).
+- 곱 $*$과 거듭 곱보다 나중에 묶인다: $\mathrm{Real} * \mathrm{Real} \Rightarrow \mathrm{Real} = (\mathrm{Real} * \mathrm{Real}) \Rightarrow \mathrm{Real}$. 함수를 받는 함수는 괄호로 쓴다: $(\mathrm{Real} \Rightarrow \mathrm{Real}) \Rightarrow \mathrm{Real}$.
 
 **배열**은 스칼라 대수 $\mathbb K$가 정해졌을 때, 1개 이상의 서수에 따라 스칼라 값이 정해지는 함수다. **거듭 곱** $\mathbb K^{\mathbf d}$로 쓴다.
-$$ \mathbb K^{(d_1, d_2, \cdots, d_n)} := \mathrm{Func}\left(\prod [0,d_i), \mathbb K\right) \quad (d_i<:\mathrm{Card})$$
-인덱스가 0부터 시작함에 유의하라. 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$.
+$$ \mathbb K^{(d_1, d_2, \cdots, d_n)} := \mathrm{CardRng}(d_1) * \mathrm{CardRng}(d_2) * \cdots * \mathrm{CardRng}(d_n) \Rightarrow \mathbb K \quad (d_i : \mathrm{Card})$$
+$\mathrm{CardRng}(d) = [0, d)$는 길이 $d$인 차원의 인덱스 대수다(1.1절). 인덱스가 0부터 시작함에 유의하라. 배열은 함수이므로 인덱스를 인자로 호출할 수 있다(1.6절). 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$.
 
 **행렬**은 랭크 2의 배열 $\mathbb K^{(m, n)}$이다.
 
@@ -68,6 +70,13 @@ VEL 소스에서는 같은 대수를 `K^n`, `K^(m, n)`, `K^(d₁, …, dₖ)`로
 서수 대수 $\mathrm{Card}$는 최소 원소 $0$, 자연수, 최대 원소 $\top$으로 구성되며 다음과 같이 순서를 가진다.
 $$ \mathrm{Card} := 0 \mid \mathbb{N} \mid \top, \qquad 0 < 1 < 2 < \cdots < \top$$
 $\top$은 **무한대** $\aleph_0$이며, VEL에서는 미리 선언된 이름 `inf`로 쓴다.
+
+**서수 범위** $\mathrm{CardRng}(n)$은 서수 $n$보다 작은 서수의 대수다.
+$$ \mathrm{CardRng}(n) := [0, n) = \{\, c : \mathrm{Card} \mid c < n \,\} \quad (n : \mathrm{Card})$$
+- 길이 $n$인 차원의 인덱스 대수다. 배열의 정의역은 서수 범위의 곱이다(1장 머리).
+- $\mathrm{CardRng}(\top)$은 유한 서수 전체이고, $\mathrm{Card} = \mathrm{CardRng}(\top) \cup \{\top\}$이다.
+- 포함 관계: $\mathrm{CardRng}(m) <: \mathrm{CardRng}(n) <: \mathrm{Card}$ $(m \le n)$. $\mathrm{CardRng}(0)$은 원소가 없다.
+- $\mathrm{Card}$는 스칼라 대수이고, $\mathrm{CardRng}(n)$은 인자 $n$을 받는 대수 구성자다.
 - 결과가 서수가 될 수 없는 연산은 **오류**다. 예: $m > n$일 때 $n - m$. 결과가 없으므로 그 식의 대수는 $\mathrm{Not}$과 같이 취급한다(값을 내지 않고 끝난다).
 - 실행 시점의 오류는 `NullPointerException`이다(null 원소를 연산에 쓸 때(1.2절)와 같다). 컴파일 타임에 알 수 있으면 컴파일 오류다.
 
@@ -190,6 +199,13 @@ b[0] = 9      # b = (9, 2, 3), a는 여전히 (1, 2, 3)
 - 첨자의 개수는 배열의 랭크와 같아야 한다. 단, 벡터는 첨자 하나로 긴 쪽 차원을 고르며 방향(열/행)을 유지한다.
 - 리터럴 인덱스가 크기가 정해진 차원의 범위를 벗어나면 컴파일 오류다. 크기가 $\top$인 차원은 1.2절을 따른다.
 
+**배열 호출** `m(i₁, …, iₖ)`: 배열은 $\mathrm{CardRng}(d_1) * \cdots * \mathrm{CardRng}(d_k) \Rightarrow \mathbb K$인 함수이므로(1장 머리) 호출하면 원소 하나를 얻는다.
+- 인자는 함수 호출과 같이 하나이며 구조 분해된다. `I = (1, 2)`일 때 `A(I)`, `A((1, 2))`, `A(1, 2)`는 같고, `A[1, 2]`와 같은 값이다.
+- 인자 자리는 인덱스 자리다. $\mathrm{Int}$와 $\mathrm{Card}$ 인자를 $\mathrm{CardRng}(d)$로 좁히며, 범위를 벗어나면 인덱싱과 같이 오류다(리터럴이면 컴파일 오류).
+- 위치 하나만 고른다. 범위, `:`, `end`, 분할점은 `[…]` 안에서만 쓴다. `A(0:2, 1)`, `A(:, 1)`은 오류다.
+- 부분 적용은 없다. `A(1)`, `A(1)(2)`는 오류다($\mathrm{CardRng}(3) * \mathrm{CardRng}(3) \Rightarrow \mathrm{Int}$는 커링된 함수가 아니다, 1.10절). 행은 `A[1, :]`로 꺼낸다.
+- 인덱싱 `[…]`은 호출과 맞추지 않는다. 첨자 하나가 벡터인 `A[I]`는 오류다(첨자 개수 = 랭크).
+
 ### 1.7. 분할과 블록 텐서
 $m \times n$ 행렬 $M$과 분할점 $0 \le a_0 < a_1 < \cdots < a_k \le m$, $0 \le b_0 < b_1 < \cdots < b_l \le n$에 대해, 첨자 자리의 분할점 체인 `M[a₀:…:aₖ, b₀:…:bₗ]`은 블록
 $$ B_{ij} = M[a_i : a_{i+1},\ b_j : b_{j+1}] \quad (0 \le i < k,\ 0 \le j < l) $$
@@ -214,7 +230,7 @@ $$ M[\mathbf a, \mathbf b] : \mathbb K^{(k, l, h, w)} $$
 - 원소: 스칼라 대수는 $\vee$를 따른다(3.1절). $\mathrm{Bool}$과 수치 가지는 섞을 수 없다.
 
 ### 1.9. 원소별 적용
-함수 $f : \mathrm{Func}(A_1 * \cdots * A_n, B)$의 **원소별 적용** `f.(X₁, …, Xₙ)`은 $f$를 원소마다 적용한다.
+함수 $f : A_1 * \cdots * A_n \Rightarrow B$의 **원소별 적용** `f.(X₁, …, Xₙ)`은 $f$를 원소마다 적용한다.
 - `.( … )`의 괄호는 **인자 목록**이다. 인자는 각각 배열(같은 스칼라 대수의 거듭 곱 $\mathbb K^{\mathbf d}$)이어야 하며, 모양이 다른 곱은 원소별로 적용할 수 없다. 예: `f.([a₁, a₂, …]) = [f(a₁), f(a₂), …]`
 - 인자 $X_i$의 원소 대수는 $A_i$에 대입 가능해야 한다.
 - 인자의 모양은 1.3절의 브로드캐스팅으로 맞추며, 그 모양 $\mathbf d$가 결과의 모양이다.
@@ -226,14 +242,14 @@ $$ \text{f.}(X_1, \cdots, X_n) : B^{\mathbf d} $$
 VEL 안에서 함수는 **함수 리터럴** `(매개변수) => 본문`으로 만든다. 함수는 값이므로 변수에 대입해 쓴다. 이름을 붙여 **정의**할 수도 있다(1.11절).
 
 ```
-f = (a: Real, b: Real) => sqrt(a^2 + b^2)          # Func(Real * Real, Real) = Func(Real^2, Real)
-g = ((x, y): Real^2) => sqrt(x^2 + y^2)      # Func(Real^2, Real): f와 같은 대수
+f = (a: Real, b: Real) => sqrt(a^2 + b^2)   # Real * Real => Real (= Real^2 => Real)
+g = ((x, y): Real^2) => sqrt(x^2 + y^2)      # Real^2 => Real: f와 같은 대수
 fibo = (n: Card) => {
   if n == inf then return inf
   if n == 0 then return 0
   if n == 1 then return 1
   return fibo(n-2) + fibo(n-1)
-}                                                   # Func(Card, Int)
+}                                            # Card => Int
 ```
 
 - **매개변수 목록**은 인자 하나를 구조 분해하는 패턴이다. 함수는 항상 인자 하나를 받으며, 그 대수는 매개변수 대수의 곱(1.4.1절)이다. 그래서 `(a: Real, b: Real) => …`와 `((a, b): Real^2) => …`는 같은 대수이고, `f(3, 4)`와 `f((3, 4))`는 같은 호출이다. 매개변수가 없으면 인자 대수는 $\mathrm{Unit}$이다.
@@ -243,6 +259,19 @@ fibo = (n: Card) => {
 - **반환 대수**는 모든 `return` 값의 대수의 상한($\vee$)으로 추론한다. 재귀 호출은 재귀가 아닌 `return`들로 먼저 구한 대수로 가정하고 다시 검사하며, 결과가 바뀌면 오류다. 위 `fibo`에서 `n-2`는 산술이므로 $\mathrm{Int}$이고(1.1절), 반환 대수는 $\mathrm{Card} \vee \mathrm{Int} = \mathrm{Int}$다. `fibo(n-2)`의 인자 `n-2`는 $\mathrm{Card}$ 매개변수 자리에서 $\mathrm{Card}$로 변환된다. `return inf`는 $\top$을 $\mathrm{Int}$로 변환하므로 `fibo(inf)`는 오류다.
 - 함수는 바깥의 변수를 **값으로** 붙잡는다. VEL 값은 불변이므로 붙잡은 뒤 바깥 변수를 다시 묶어도 함수 안의 값은 바뀌지 않는다.
 - 원소별 적용 `f.(A, B)`(1.9절)도 그대로 쓸 수 있다.
+
+**커링**: 본문이 다시 함수 리터럴이면 함수를 돌려주는 함수가 된다. 대수는 $\Rightarrow$의 연쇄로 쓴다.
+
+```
+add = (x: Real) => (y: Real) => x + y        # Real => Real => Real
+inc = add(1)                                 # Real => Real
+z = add(1)(2)                                # 3: 호출 결과를 다시 호출한다
+h = (x: Real, y: Real) => x + y              # Real * Real => Real
+```
+
+- $\mathrm{Real} \Rightarrow \mathrm{Real} \Rightarrow \mathrm{Real}$과 $\mathrm{Real} * \mathrm{Real} \Rightarrow \mathrm{Real}$은 서로 다른 대수이며, 서로 자동으로 바뀌지 않는다. `add(1, 2)`와 `h(1)`은 오류다.
+- 호출 `e(인자)`는 이름뿐 아니라 함수 값을 내는 어떤 식 뒤에도 쓸 수 있다(VEL 문법 4.3절).
+- 바깥 함수의 인자(`x`)는 안쪽 함수가 값으로 붙잡는다.
 
 ### 1.11. 함수 이름과 오버로딩
 **정의** `이름(매개변수) => 본문`은 함수를 그 이름의 **오버로드 묶음**에 더한다. 반환 대수는 `: 대수`로 쓰거나 생략한다(생략하면 1.10절처럼 추론).
@@ -264,13 +293,13 @@ abs(x: Real, y: Real, z: Real) => {
 
 **대입과 삭제**
 - `f = 식`은 이름 `f`를 새 값에 묶는다. 이전 묶음은 모두 가려진다. 함수 값을 대입하면 오버로드 하나짜리 묶음이 된다.
-- `f{S} = 식`은 시그니처 `S`의 오버로드 하나를 바꾼다. 식의 대수는 $\mathrm{Func}(S, \cdot)$여야 한다.
+- `f{S} = 식`은 시그니처 `S`의 오버로드 하나를 바꾼다. 식의 대수는 $S \Rightarrow \cdot$이어야 한다.
 - `x = null`, `f{S} = null`은 이름이나 오버로드 하나를 **지운다**. 미리 선언된 이름 `null`의 대수는 $\mathrm{Not}$이며, 지운 이름이나 오버로드를 참조하면 컴파일 오류다. 그 뒤에 다시 정의하거나 대입할 수 있다.
 - 묶음 전체를 값으로 쓰면(`g = f`) 묶음이 함께 넘어간다. 호출할 때 오버로드를 고른다.
 
 **호출할 때 오버로드 고르기** `f(인자)`:
 1. **1단계(엄격)**: 인자 대수가 시그니처에 포함되는($\sqsubseteq$) 오버로드가 후보다. 포함은 스칼라 대수의 위계($\mathrm{Int} <: \mathrm{Real} <: \mathrm{Complex}$, $\mathrm{Not}$은 어디에나 포함), 같거나 매개변수 쪽이 $\top$인 차원 크기, 곱의 항목별 포함으로 정한다. 스칼라는 $1 \times 1$이므로 $\mathbb K^{\top}$ 매개변수에도 들어간다.
-2. **2단계(느슨)**: 1단계 후보가 없을 때만 $\mathrm{Int}$와 $\mathrm{Card}$ 사이의 변환(1.1절), 크기가 $\top$인 인자를 크기가 정해진 매개변수에 넘기기를 허용한다.
+2. **2단계(느슨)**: 1단계 후보가 없을 때만 $\mathrm{Int}$와 $\mathrm{Card}$ 사이의 변환(1.1절), $\mathrm{Int}$·$\mathrm{Card}$를 $\mathrm{CardRng}(n)$으로 좁히기(실행 시 범위 검사, 1.6절), 크기가 $\top$인 인자를 크기가 정해진 매개변수에 넘기기를 허용한다.
 3. 후보 중 **가장 구체적인** 하나를 고른다. 시그니처 $S_A \sqsubseteq S_B$이면 $A$가 $B$보다 구체적이다. 다른 모든 후보보다 구체적인 하나가 없으면 모호하다는 오류이며, 시그니처 지정으로 골라야 한다.
 
 ```
@@ -310,21 +339,22 @@ f(1, (2, 3))    # 4
 $$ \langle \mathbb K^{\mathbf d} \rangle_R = (\langle\mathbb K\rangle_R)^{\mathbf d} $$
 예: 타입 $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$는 원소가 64비트 부동소수인 실수 3차원 벡터다(Java `@Dim(3) double[]`). 해상도 없이 쓴 $\mathrm{Real}^{3}$은 타입이 아니라 대수다.
 
-거듭 곱 $\mathbb K^{\mathbf d}$, $\mathrm{Func}$ 같은 구성자와 곱 $*$의 인자 자리에는 대수 대신 **해상도**나 **타입**을 넣을 수 있다.
-- 인자가 모두 해상도면 그 식은 **구조를 가진 해상도**다. 예: $\mathrm{Func}(\mathrm{F}64, \mathrm{Z}64)$, $\mathrm{F}64 * \mathrm{Z}32$
-- 인자가 모두 타입이면 그 식은 타입이다. 예: $\mathrm{Func}(\langle\mathrm{Real}\rangle_{\mathrm{F}64}, \langle\mathrm{Int}\rangle_{\mathrm{Z}64})$
+거듭 곱 $\mathbb K^{\mathbf d}$, 곱 $*$, 함수 $\Rightarrow$ 같은 구성자의 인자 자리에는 대수 대신 **해상도**나 **타입**을 넣을 수 있다.
+- 인자가 모두 해상도면 그 식은 **구조를 가진 해상도**다. 예: $\mathrm{F}64 \Rightarrow \mathrm{Z}64$, $\mathrm{F}64 * \mathrm{Z}32$
+- 인자가 모두 타입이면 그 식은 타입이다. 예: $\langle\mathrm{Real}\rangle_{\mathrm{F}64} \Rightarrow \langle\mathrm{Int}\rangle_{\mathrm{Z}64}$
 
 같은 구조의 대수에 구조를 가진 해상도를 적용하면 자리마다 해상도가 적용된다. 하나의 해상도 $R$을 적용하면 모든 자리에 $R$이 적용된다.
-$$ \langle \mathrm{Func}(A, B) \rangle_{\mathrm{Func}(R_A, R_B)} = \mathrm{Func}(\langle A\rangle_{R_A}, \langle B\rangle_{R_B}), \qquad \langle \mathrm{Func}(A, B) \rangle_R = \langle \mathrm{Func}(A, B) \rangle_{\mathrm{Func}(R, R)} $$
+$$ \langle A \Rightarrow B \rangle_{R_A \Rightarrow R_B} = \langle A\rangle_{R_A} \Rightarrow \langle B\rangle_{R_B}, \qquad \langle A \Rightarrow B \rangle_R = \langle A \Rightarrow B \rangle_{R \Rightarrow R} $$
 
 | Java | 대수 | 타입 |
 | --- | --- | --- |
-| `DoubleUnaryOperator` | $\mathrm{Func}(\mathrm{Real}, \mathrm{Real})$ | $\langle\mathrm{Func}(\mathrm{Real}, \mathrm{Real})\rangle_{\mathrm{F}64}$ |
-| `DoubleToLongFunction` | $\mathrm{Func}(\mathrm{Real}, \mathrm{Int})$ | $\langle\mathrm{Func}(\mathrm{Real}, \mathrm{Int})\rangle_{\mathrm{Func}(\mathrm{F}64, \mathrm{Z}64)}$ |
-| `double Math.scalb(double, int)` | $\mathrm{Func}(\mathrm{Real} \times \mathrm{Int}, \mathrm{Real})$ | $\langle\mathrm{Func}(\mathrm{Real} \times \mathrm{Int}, \mathrm{Real})\rangle_{\mathrm{Func}(\mathrm{F}64 \times \mathrm{Z}32, \mathrm{F}64)}$ |
-| `double g(DoubleToLongFunction f)` | $\mathrm{Func}(\mathrm{Func}(\mathrm{Real}, \mathrm{Int}), \mathrm{Real})$ | $\langle\mathrm{Func}(\mathrm{Func}(\mathrm{Real}, \mathrm{Int}), \mathrm{Real})\rangle_{\mathrm{Func}(\mathrm{Func}(\mathrm{F}64, \mathrm{Z}64), \mathrm{F}64)}$ |
+| `DoubleUnaryOperator` | $\mathrm{Real} \Rightarrow \mathrm{Real}$ | $\langle\mathrm{Real} \Rightarrow \mathrm{Real}\rangle_{\mathrm{F}64}$ |
+| `DoubleToLongFunction` | $\mathrm{Real} \Rightarrow \mathrm{Int}$ | $\langle\mathrm{Real} \Rightarrow \mathrm{Int}\rangle_{\mathrm{F}64 \Rightarrow \mathrm{Z}64}$ |
+| `double Math.scalb(double, int)` | $\mathrm{Real} * \mathrm{Int} \Rightarrow \mathrm{Real}$ | $\langle\mathrm{Real} * \mathrm{Int} \Rightarrow \mathrm{Real}\rangle_{\mathrm{F}64 * \mathrm{Z}32 \Rightarrow \mathrm{F}64}$ |
+| `double g(DoubleToLongFunction f)` | $(\mathrm{Real} \Rightarrow \mathrm{Int}) \Rightarrow \mathrm{Real}$ | $\langle(\mathrm{Real} \Rightarrow \mathrm{Int}) \Rightarrow \mathrm{Real}\rangle_{(\mathrm{F}64 \Rightarrow \mathrm{Z}64) \Rightarrow \mathrm{F}64}$ |
+| `DoubleFunction<DoubleUnaryOperator>` | $\mathrm{Real} \Rightarrow \mathrm{Real} \Rightarrow \mathrm{Real}$ | $\langle\mathrm{Real} \Rightarrow \mathrm{Real} \Rightarrow \mathrm{Real}\rangle_{\mathrm{F}64}$ |
 
-배열의 정의역인 인덱스 집합 $\prod[0, d_i)$에는 해상도가 적용되지 않는다. 그래서 **배열의 해상도는 하나**이며 모든 원소에 적용된다. 해상도가 서로 다른 원소로 배열을 만들 때(예: 성분 객체, Java 매핑 2.5절)는 기본으로 원소 중 **가장 큰 해상도**를 고른다. 해상도의 크기는 언어별 구체화 규칙의 $\sqcup$로 정한다(Java 매핑 7.3절).
+배열의 정의역인 인덱스 대수 $\mathrm{CardRng}(d_1) * \cdots * \mathrm{CardRng}(d_n)$에는 해상도가 적용되지 않는다. 그래서 **배열의 해상도는 하나**이며 모든 원소에 적용된다. 해상도가 서로 다른 원소로 배열을 만들 때(예: 성분 객체, Java 매핑 2.5절)는 기본으로 원소 중 **가장 큰 해상도**를 고른다. 해상도의 크기는 언어별 구체화 규칙의 $\sqcup$로 정한다(Java 매핑 7.3절).
 
 스칼라 대수와 해상도의 조합은 다음으로 제한한다.
 
