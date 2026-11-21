@@ -256,6 +256,10 @@ class JavaCodeGeneratorTest {
         assertEquals(32.0, run("u' * v", "double(u double[]@3; v double[]@3)", new double[] {1, 2, 3}, new double[] {4, 5, 6}));
         // transpose of a matrix
         assertArrayEquals(new double[][] {{1, 2}, {3, 4}}, (double[][]) run("A'", "double[][](A double[][]@2,2)", (Object) a));
+        // unsized: the inner length is read from the first row, and is 0 when there are no rows
+        assertArrayEquals(new double[][] {{1, 2}, {3, 4}}, (double[][]) run("A'", "double[][](A double[][])", (Object) a));
+        assertEquals(0, ((double[][]) run("A'", "double[][](A double[][])", (Object) new double[0][3])).length);
+        assertEquals(0, ((double[][]) run("A + A", "double[][](A double[][])", (Object) new double[0][3])).length);
     }
 
     @Test

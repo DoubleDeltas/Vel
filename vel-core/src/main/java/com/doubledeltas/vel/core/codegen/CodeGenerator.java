@@ -1251,12 +1251,20 @@ public final class CodeGenerator {
         if (dims.get(k) instanceof Card.Finite f) {
             return intLit(f.size());
         }
+        // An inner length is read from the first row: a[0].length. With no rows it is stored nowhere
+        // (new double[0][3] and new double[0][5] are the same value), so it is taken as 0:
+        // a.length == 0 ? 0 : a[0].length (java.md 2.3), and likewise at every level.
         int r = JavaTypes.javaRank(dims);
-        Expr e = v.code();
-        for (int i = 0; i < r - 1 - k; i++) {
-            e = new Get(e, intLit(0), e.type().component());
+        return innerLength(v.code(), r - 1 - k);
+    }
+
+    /** The length {@code depth} levels inside {@code array}, 0 when an enclosing level has no rows. */
+    private static Expr innerLength(Expr array, int depth) {
+        if (depth == 0) {
+            return new Length(array);
         }
-        return new Length(e);
+        Expr inner = innerLength(new Get(array, intLit(0), array.type().component()), depth - 1);
+        return new Choose(new Binary(Op.EQ, new Length(array), intLit(0), Type.BOOLEAN), intLit(0), inner, Type.INT);
     }
 
     /** A scalar broadcast into an array of the given known shape. */
