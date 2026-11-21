@@ -41,7 +41,7 @@ $$ X <: (A \Rightarrow B)$$
 
 **배열**은 스칼라 대수 $\mathbb K$가 정해졌을 때, 1개 이상의 서수에 따라 스칼라 값이 정해지는 함수다. **거듭 곱** $\mathbb K^{\mathbf d}$로 쓴다.
 $$ \mathbb K^{(d_1, d_2, \cdots, d_n)} := \mathrm{Idx}(d_1) * \mathrm{Idx}(d_2) * \cdots * \mathrm{Idx}(d_n) \Rightarrow \mathbb K \quad (d_i : \mathrm{Card})$$
-$\mathrm{Idx}(d) = [0, d)$는 길이 $d$인 차원의 인덱스 대수다(1.1절). 인덱스가 0부터 시작함에 유의하라. 배열은 함수이므로 인덱스를 인자로 호출할 수 있다(1.6절). 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$.
+$\mathrm{Idx}(d) = [0, d)$는 길이 $d$인 차원의 인덱스 대수다(1.1절). 인덱스가 0부터 시작함에 유의하라. 배열은 함수이므로 인덱스를 인자로 호출할 수 있다(1.6절). 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$ (단 $k \ge 2$인 정해진 크기일 때만).
 
 **행렬**은 랭크 2의 배열 $\mathbb K^{(m, n)}$이다.
 
@@ -148,7 +148,8 @@ $$ [A; C] : \mathbb K^{(a + b, c)} \quad (A : \mathbb K^{(a, c)},\ C : \mathbb K
 - **결합법칙이 없다.** $A * B * C$, $(A * B) * C$, $A * (B * C)$는 서로 다른 대수다. $A * B * C$는 항목이 셋인 곱이다.
 - **항등원** $\mathrm{Unit}$: 항목이 없는 곱이며 값은 빈 튜플 `()` 하나다. 곱의 항목 자리에서 $\mathrm{Unit}$은 사라진다: $A * \mathrm{Unit} = \mathrm{Unit} * A = A$. 항목이 하나인 곱은 그 항목 자신이다.
 - **같은 모양의 곱은 배열이다.** 항목의 모양이 모두 $\mathbf d$이면 곱은 튜플 쌓기(1.4절)와 같다.
-$$ \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k} = \mathbb K^{(k, \mathbf d)} $$
+$$ \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k} = \mathbb K^{(k, \mathbf d)} \quad (k \ge 2) $$
+  **$k \ge 2$일 때만 성립한다.** $k = 1$이면 "항목이 하나인 곱은 그 항목 자신"과 겹쳐 $\mathbb K^{(1, \mathbf d)} = \mathbb K^{\mathbf d}$(예: 행벡터 $\mathbb K^{(1, 4)}$ = 열벡터 $\mathbb K^{4}$)가 되고, $k = 0$이면 빈 배열 $\mathbb K^{(0, \mathbf d)}$가 $\mathrm{Unit}$이 되어 모양 정보를 잃는다. 이 둘은 1장 머리의 정의($\mathrm{Idx}$의 곱에서 가는 함수)로만 정해지는 별개의 배열 대수다. $k$가 $\top$이면 항목 수가 정해지지 않으므로 곱으로 펼치지 않는다.
   예: $\mathrm{Real} * \mathrm{Real} = \mathrm{Real}^{2}$, $\mathbb K^{2} * \mathbb K^{2} * \mathbb K^{2} = \mathbb K^{(3, 2)}$, $(\mathrm{Real} * \mathrm{Real}) * (\mathrm{Real} * \mathrm{Real}) = \mathrm{Real}^{(2, 2)}$.
 - 모양은 같고 스칼라 대수만 다른 곱(예: $\mathrm{Int} * \mathrm{Real}$)은 그대로 곱으로 남는다. 항목마다 대수를 기억하므로 `(n, x)`의 `n`은 $\mathrm{Int}$다. 배열 연산에 쓰이면 원소 대수의 $\vee$로 된 배열로 본다: $\mathrm{Int} * \mathrm{Real} \sqsubseteq \mathrm{Real}^{2}$(1.4절의 "원소 대수는 모든 항목 대수의 $\vee$").
 - **모양이 다른 곱**(예: $\mathrm{Real} * \mathrm{Real}^{3}$)은 배열이 아니다. 변수에 대입하고, 구조 분해로 꺼내고, 함수에 넘길 수 있지만 산술·인덱싱·원소별 적용은 할 수 없다.
