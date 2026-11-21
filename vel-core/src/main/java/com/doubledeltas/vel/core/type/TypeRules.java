@@ -3,6 +3,7 @@ package com.doubledeltas.vel.core.type;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Result algebras of VEL operations: shapes and element algebras combined (type-system.md 1, 3).
@@ -158,14 +159,26 @@ public final class TypeRules {
 
     /**
      * Algebra of a matrix literal {@code [A, B; C, D]}: each row is concatenated horizontally, then the
-     * rows vertically (type-system.md 1.4).
+     * rows vertically (type-system.md 1.4). Blocks whose shape is known to be 0x0 (such as {@code []})
+     * drop out first, contributing neither shape nor element algebra; if every block is 0x0 the result
+     * is {@code K^(0, 0)} with {@code K} the ∨ of their element algebras.
      */
     public static ArrayAlgebra matrix(List<List<ArrayAlgebra>> rows) {
         if (rows.isEmpty() || rows.stream().anyMatch(List::isEmpty)) {
             throw new VelTypeException("empty matrix literal");
         }
+        List<List<ArrayAlgebra>> kept = dropEmptyBlocks(rows);
+        if (kept.isEmpty()) {
+            ScalarAlgebra element = ScalarAlgebra.NOT;
+            for (List<ArrayAlgebra> row : rows) {
+                for (ArrayAlgebra block : row) {
+                    element = join(element, block.element());
+                }
+            }
+            return empty(element);
+        }
         ArrayAlgebra result = null;
-        for (List<ArrayAlgebra> row : rows) {
+        for (List<ArrayAlgebra> row : kept) {
             ArrayAlgebra line = row.getFirst();
             for (ArrayAlgebra block : row.subList(1, row.size())) {
                 line = new ArrayAlgebra(Shapes.horizontal(line, block), join(line.element(), block.element()));
@@ -175,6 +188,32 @@ public final class TypeRules {
                     : new ArrayAlgebra(Shapes.vertical(result, line), join(result.element(), line.element()));
         }
         return result;
+    }
+
+    /** {@code K^(0, 0)}; {@code []} is {@code empty(Not)}. */
+    public static ArrayAlgebra empty(ScalarAlgebra element) {
+        return ArrayAlgebra.mat(Card.of(0), Card.of(0), element);
+    }
+
+    /** Whether the shape is known to be 0x0, so the block drops out of a concatenation. */
+    public static boolean isEmptyBlock(ArrayAlgebra a) {
+        return a.isMatrix() && a.rows().isZero() && a.cols().isZero();
+    }
+
+    /** The rows of a matrix literal without their 0x0 blocks; rows left empty are removed. */
+    public static <T> List<List<T>> dropEmptyBlocks(List<List<T>> rows, Function<T, ArrayAlgebra> alg) {
+        List<List<T>> kept = new ArrayList<>();
+        for (List<T> row : rows) {
+            List<T> r = row.stream().filter(b -> !isEmptyBlock(alg.apply(b))).toList();
+            if (!r.isEmpty()) {
+                kept.add(r);
+            }
+        }
+        return kept;
+    }
+
+    private static List<List<ArrayAlgebra>> dropEmptyBlocks(List<List<ArrayAlgebra>> rows) {
+        return dropEmptyBlocks(rows, a -> a);
     }
 
     /**

@@ -315,6 +315,13 @@ class VelFrontendTest {
     }
 
     @Test
+    void emptyMatrixLiteral() {
+        assertEquals("(singleExpression (expr (primary [ ])) <EOF>)", tree("[]"));
+        assertEquals("(singleExpression (expr (primary [ (matrixRow (expr (primary A)) , (expr (primary [ ]))) ])) <EOF>)",
+                tree("[A, []]"));
+    }
+
+    @Test
     void boolXorHasAdditivePrecedence() {
         // a o+ b * c == a o+ (b * c); a + b o+ c == (a + b) o+ c
         assertEquals("(singleExpression (expr (expr (primary a)) o+ (expr (expr (primary b)) * (expr (primary c)))) <EOF>)",

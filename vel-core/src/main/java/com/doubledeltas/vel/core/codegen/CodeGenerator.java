@@ -410,7 +410,9 @@ public final class CodeGenerator {
             case VelParser.ParenExprContext e -> expr(e.expr());
             case VelParser.TupleLiteralContext t -> tuple(t.expr().stream().map(this::expr).toList());
             case VelParser.MatrixLiteralContext m -> matrix(m.matrixRow().stream()
-                    .map(r -> r.expr().stream().map(this::expr).toList()).toList());
+                    .map(r -> r.expr().stream().map(this::block).toList()).toList());
+            case VelParser.EmptyMatrixLiteralContext ignored ->
+                    throw unsupported("empty matrices [] outside a concatenation");
             case VelParser.CallExprContext c -> call(c);
             case VelParser.BroadcastCallExprContext ignored -> throw unsupported("function calls");
             case VelParser.FunctionRefContext ignored -> throw unsupported("function references");
@@ -891,8 +893,25 @@ public final class CodeGenerator {
         return t.isFloating() ? new Lit(t, BigDecimal.ZERO) : new Lit(t, BigInteger.ZERO);
     }
 
-    private Val matrix(List<List<Val>> rows) {
-        ArrayAlgebra alg = TypeRules.matrix(rows.stream().map(row -> row.stream().map(Val::alg).toList()).toList());
+    /** A block of a matrix literal; {@code []} there is a 0x0 placeholder with no code (it drops out). */
+    private Val block(VelParser.ExprContext e) {
+        if (e instanceof VelParser.PrimaryExprContext p && p.primary() instanceof VelParser.EmptyMatrixLiteralContext) {
+            return new Val(TypeRules.empty(ScalarAlgebra.NOT), null, null, false);
+        }
+        return expr(e);
+    }
+
+    private Val matrix(List<List<Val>> literalRows) {
+        ArrayAlgebra alg = TypeRules.matrix(literalRows.stream().map(row -> row.stream().map(Val::alg).toList()).toList());
+        // 0x0 blocks such as [] drop out of the concatenation (type-system.md 1.4)
+        List<List<Val>> rows = TypeRules.dropEmptyBlocks(literalRows, Val::alg);
+        if (rows.isEmpty()) {
+            if (alg.element() == ScalarAlgebra.NOT) {
+                throw unsupported("empty matrices [] outside a concatenation");
+            }
+            List<Val> all = literalRows.stream().flatMap(List::stream).toList();
+            return allocate(alg, joinAll(alg.element(), all), List.of(intLit(0), intLit(0)));
+        }
         if (rows.size() == 1 && rows.getFirst().size() == 1) {
             return rows.getFirst().getFirst();
         }

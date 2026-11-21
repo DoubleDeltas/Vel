@@ -242,6 +242,12 @@ class JavaCodeGeneratorTest {
         assertArrayEquals(new double[][] {{1, 3}, {2, 4}, {5, 6}},
                 (double[][]) run("[A, b]", "double[][](A double[][]@2,2; b double[]@2)",
                         new double[][] {{1, 3}, {2, 4}}, new double[] {5, 6}));
+        // [] drops out of a concatenation: [A, []] = [[]; A] = A
+        assertArrayEquals(new double[][] {{1, 3}, {2, 4}},
+                (double[][]) run("[A, []]", "double[][](A double[][]@2,2)", (Object) new double[][] {{1, 3}, {2, 4}}));
+        assertArrayEquals(new double[][] {{1, 3}, {2, 4}, {5, 6}},
+                (double[][]) run("[[]; A, b]", "double[][](A double[][]@2,2; b double[]@2)",
+                        new double[][] {{1, 3}, {2, 4}}, new double[] {5, 6}));
         // A * v: Mat(2, 2) * Vec(2)
         double[][] a = {{1, 3}, {2, 4}}; // [1, 2; 3, 4]
         assertArrayEquals(new double[] {1 * 5 + 2 * 6, 3 * 5 + 4 * 6},

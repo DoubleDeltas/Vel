@@ -283,6 +283,27 @@ class TypeRulesTest {
     }
 
     @Test
+    void emptyBlocksDropOut() {
+        // [] : Not^(0, 0); a 0x0 block drops out of a concatenation, whichever direction
+        ArrayAlgebra empty = TypeRules.empty(ScalarAlgebra.NOT);
+        ArrayAlgebra a = mat(n(2), n(3));
+        assertEquals(a, TypeRules.matrix(List.of(List.of(a, empty))));
+        assertEquals(a, TypeRules.matrix(List.of(List.of(empty), List.of(a))));
+        assertEquals(mat(n(2), n(4)), TypeRules.matrix(List.of(List.of(empty, a, empty, mat(n(2), n(1))))));
+        // any 0x0 block drops out, its element algebra too: [A, Int^(0,0)] keeps Real
+        assertEquals(a, TypeRules.matrix(List.of(List.of(a, ArrayAlgebra.mat(n(0), n(0), INT)))));
+        // only 0x0: a 0x3 block is concatenated by the ordinary rule
+        assertThrows(VelTypeException.class, () -> TypeRules.matrix(List.of(List.of(a, mat(n(0), n(3))))));
+        assertEquals(mat(n(2), n(3)), TypeRules.matrix(List.of(List.of(mat(n(0), n(3))), List.of(a))));
+        // ⊤ is not known to be 0: no drop, the ordinary rule (1.2) applies
+        assertEquals(mat(TOP, TOP), TypeRules.matrix(List.of(List.of(a, mat(TOP, TOP)))));
+        // nothing but 0x0 blocks: K^(0, 0) with K the ∨
+        assertEquals(empty, TypeRules.matrix(List.of(List.of(empty, empty))));
+        assertEquals(ArrayAlgebra.mat(n(0), n(0), REAL),
+                TypeRules.matrix(List.of(List.of(empty, mat(n(0), n(0))))));
+    }
+
+    @Test
     void scalarLiteralsFormMatricesAndTuplesFormColumns() {
         // [1, 2; 3, 4] : Mat(2, 2, Int)
         assertEquals(ArrayAlgebra.mat(n(2), n(2), INT),

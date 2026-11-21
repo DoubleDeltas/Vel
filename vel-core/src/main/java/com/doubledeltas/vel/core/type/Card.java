@@ -65,6 +65,11 @@ public sealed interface Card permits Card.Finite, Card.Top, Card.Bottom {
         return this == BOTTOM;
     }
 
+    /** Whether the size is known at compile time to be 0. */
+    default boolean isZero() {
+        return this instanceof Finite f && f.size() == 0;
+    }
+
     /** Whether the size is known at compile time to be 1 (only such dimensions are broadcast). */
     default boolean isOne() {
         return this instanceof Finite f && f.size() == 1;

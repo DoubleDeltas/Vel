@@ -194,6 +194,8 @@ primary
     | '(' expr ')'                                          # parenExpr
     | '(' expr (',' expr)+ ')'                              # tupleLiteral
     | '[' matrixRow (';' matrixRow)* ']'                    # matrixLiteral
+    // Empty matrix `[]`: algebra Not^(0, 0); a 0x0 block drops out of concatenation (type-system.md 1.4)
+    | '[' ']'                                               # emptyMatrixLiteral
     ;
 
 arguments
