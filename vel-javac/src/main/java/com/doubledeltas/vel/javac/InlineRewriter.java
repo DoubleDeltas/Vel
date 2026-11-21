@@ -424,7 +424,7 @@ final class InlineRewriter extends TreeTranslator {
         }
     }
 
-    /** The integers of an annotation value: a literal, {@code -literal}, {@code Dim.TOP}, or an array of them. */
+    /** The integers of an annotation value: a literal, {@code -literal}, {@code Dim.VAR}, or an array of them. */
     private static int[] ints(JCExpression e) {
         List<JCExpression> items = e instanceof JCNewArray array ? array.elems : List.of(e);
         int[] values = new int[items.size()];
@@ -442,9 +442,9 @@ final class InlineRewriter extends TreeTranslator {
         if (e instanceof JCUnary u && u.getTag() == JCTree.Tag.NEG) {
             return -intValue(u.arg);
         }
-        if (e.toString().endsWith("TOP")) {
-            return DimSpec.TOP;
+        if (e.toString().endsWith("VAR")) {
+            return DimSpec.VAR;
         }
-        throw new VelTypeException("@Dim sizes must be integer literals or Dim.TOP, not " + e);
+        throw new VelTypeException("@Dim sizes must be integer literals or Dim.VAR, not " + e);
     }
 }

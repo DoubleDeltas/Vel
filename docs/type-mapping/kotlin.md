@@ -59,19 +59,19 @@ $\langle\mathrm{Real}\rangle_{\mathrm{D}\infty}$의 정밀도 처리와 $\langle
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
 ### 2.1. 크기
-각 차원의 크기는 기본적으로 $\top$이며, `@Dim`으로 지정한다(Java 매핑 2.1절). `value`와 `vel`은 VEL 순서(행 먼저), `java`는 JVM 선언 순서(바깥 배열부터)이며 셋 중 정확히 하나를 쓴다.
+각 차원의 크기는 기본적으로 새 길이 변수(VEL 타입 시스템 1.2절)이며, `@Dim`으로 지정한다(Java 매핑 2.1절). `value`와 `vel`은 VEL 순서(행 먼저), `java`는 JVM 선언 순서(바깥 배열부터)이며 셋 중 정확히 하나를 쓴다.
 
 Kotlin에서는 `value` 인자를 가변 인자처럼 `@Dim(3, 4)`로, 이름 있는 배열 인자를 `[...]`로 쓴다.
 
 | Kotlin 선언 | VEL 타입 |
 | --- | --- |
-| `v: DoubleArray` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ |
+| `v: DoubleArray` | $\langle\mathrm{Real}^{\ell}\rangle_{\mathrm{F}64}$ ($\ell$: 새 길이 변수) |
 | `@Dim(3) v: DoubleArray` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `@Dim(3, 4) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
 | `@Dim(java = [3]) v: DoubleArray` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `@Dim(java = [4, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
 | `@Dim(vel = [3, 4]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ (위와 같음) |
-| `@Dim(java = [Dim.TOP, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, \top)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = [Dim.VAR, 3]) m: Array<DoubleArray>` | $\langle\mathrm{Real}^{(3, \ell)}\rangle_{\mathrm{F}64}$ |
 
 `@Dim`은 Java 어노테이션이므로 Kotlin 속성에 붙일 때는 적용 대상을 밝히는 것을 권장한다.
 - 생성자 매개변수: `@param:Dim(...)`
@@ -80,7 +80,7 @@ Kotlin에서는 `value` 인자를 가변 인자처럼 `@Dim(3, 4)`로, 이름 �
 
 ### 2.2. 범위 밖 접근, null, 들쭉날쭉한 배열
 Java 매핑 2.2절, 2.3절과 같다.
-- 크기가 $\top$인 차원에서 범위 밖 원소는 null로 취급하고, 연산에 쓰이면 `NullPointerException`을 던진다.
+- 크기가 길이 변수인 차원에서 범위 밖 원소는 null로 취급하고, 연산에 쓰이면 `NullPointerException`을 던진다.
 - `Array<Double?>`처럼 원소가 nullable이고 값이 `null`이어도 `NullPointerException`을 던진다.
 
 ### 2.3. 불변성
@@ -100,7 +100,7 @@ $$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup 
 | `Pair<Double, Double>` | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
 | `Pair<Int, Double>` | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
 | `Triple<Float, Float, Float>` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}32}$ |
-| `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Real}^{(2, \top)}\rangle_{\mathrm{F}64}$ |
+| `Pair<DoubleArray, DoubleArray>` | $\langle\mathrm{Real}^{(2, \ell)}\rangle_{\mathrm{F}64}$ |
 | `data class V(val x: Double, val y: Double, val z: Double)` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `Pair<Int, Boolean>` | 배열이 아님 (스칼라 대수의 상한이 없음) |
 

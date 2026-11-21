@@ -9,7 +9,8 @@ import java.lang.annotation.Target;
 /**
  * Declares the compile-time size of each dimension of a Java array or {@code List} used from VEL.
  * <p>
- * Without {@code @Dim}, every dimension is {@link #TOP} (unknown until runtime).
+ * Without {@code @Dim}, every dimension is {@link #VAR}: a fresh length variable, a finite length
+ * known only at runtime. (VEL's {@code inf} is an infinite length, which a Java array cannot have.)
  * Exactly one of {@link #value()}, {@link #vel()} or {@link #java()} must be given; giving more than
  * one is a compile error. {@code value} and {@code vel} are in VEL order, {@code java} in Java order;
  * the two orders are reversed because a Java {@code F[m][n]} is the VEL matrix {@code Mat(n, m)}:
@@ -19,7 +20,7 @@ import java.lang.annotation.Target;
  * @Dim({3, 4})                 double[][] m   // VEL order -> Mat(3, 4)
  * @Dim(vel  = {3, 4})          double[][] m   // same as above
  * @Dim(java = {4, 3})          double[][] m   // 4 arrays of length 3 -> Mat(3, 4)
- * @Dim(java = {Dim.TOP, 3})    double[][] rs  // outer length unknown -> Mat(3, ⊤)
+ * @Dim(java = {Dim.VAR, 3})    double[][] rs  // outer length unknown -> Real^(3, ℓ)
  * }</pre>
  *
  * Known sizes let VEL unroll loops, drop temporaries and check shapes at compile time.
@@ -33,8 +34,8 @@ import java.lang.annotation.Target;
 @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.LOCAL_VARIABLE, ElementType.METHOD})
 public @interface Dim {
 
-    /** Marks a dimension whose size is unknown at compile time (⊤). */
-    int TOP = -1;
+    /** Marks a dimension whose length is unknown at compile time: a fresh length variable. */
+    int VAR = -1;
 
     /** Sizes in VEL order (same as {@link #vel()}): rows first ({@code Mat(m, n)} is {@code {m, n}}). */
     int[] value() default {};

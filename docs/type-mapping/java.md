@@ -66,37 +66,37 @@ JDK에는 $\langle\mathrm{Real}\rangle_{\mathrm{D}n}$에 대응하는 타입이 
 3차원 이상 시퀀스에 대해서도, 각 차원의 크기를 역순으로 놓은 배열로 취급한다.
 
 ### 2.1. 크기
-Java 배열과 `List`의 길이는 컴파일 타임에 알 수 없으므로, 각 차원의 크기는 기본적으로 $\top$이다(VEL 타입 시스템 1.2절).
+Java 배열과 `List`의 길이는 컴파일 타임에 알 수 없으므로, 각 차원의 크기는 기본적으로 **새 길이 변수**다(VEL 타입 시스템 1.2절). 길이 변수는 실행 시점에 정해지는 유한 길이이며, 무한 길이 $\top$(`inf`)과는 다르다. 선언마다 서로 다른 변수가 붙으므로 `double[] u, double[] v`의 길이는 컴파일 타임에 같은지 알 수 없다.
 
 `@Dim` 어노테이션으로 크기를 지정할 수 있다. 다음 중 **정확히 하나**를 쓴다. 둘 이상 쓰거나 모두 생략하면 컴파일 오류(`VelTypeException`)다.
 - `value`(기본 요소, `@Dim(...)`): `vel`과 같다.
 - `vel`: **VEL 순서**(행 먼저. $\mathbb K^{(m, n)}$이면 `{m, n}`)
 - `java`: **Java 선언 순서**(바깥 배열부터)
 
-2절의 매핑 때문에 VEL 순서와 Java 순서는 서로 뒤집혀 있다. 모르는 차원은 `Dim.TOP`으로 둔다.
+2절의 매핑 때문에 VEL 순서와 Java 순서는 서로 뒤집혀 있다. 모르는 차원은 `Dim.VAR`로 둔다(새 길이 변수). 무한 차원은 Java 배열로 나타낼 수 없으므로 `@Dim`으로 지정할 수 없다.
 
 | Java 선언 | VEL 타입 |
 | --- | --- |
-| `double[] v` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ |
+| `double[] v` | $\langle\mathrm{Real}^{\ell}\rangle_{\mathrm{F}64}$ ($\ell$: 새 길이 변수) |
 | `@Dim(3) double[] v` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `@Dim({3, 4}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
 | `@Dim(java = 3) double[] v` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ |
 | `@Dim(java = {4, 3}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ |
 | `@Dim(vel = {3, 4}) double[][] m` | $\langle\mathrm{Real}^{(3, 4)}\rangle_{\mathrm{F}64}$ (위와 같음) |
-| `@Dim(java = {Dim.TOP, 3}) double[][] m` | $\langle\mathrm{Real}^{(3, \top)}\rangle_{\mathrm{F}64}$ |
+| `@Dim(java = {Dim.VAR, 3}) double[][] m` | $\langle\mathrm{Real}^{(3, \ell)}\rangle_{\mathrm{F}64}$ |
 
 `@Dim`은 매개변수, 필드, 지역 변수, 메서드(반환값)에 붙일 수 있다.
 - 지정한 크기는 신뢰하며 런타임에 검사하지 않는다.
 - 실제 길이가 지정한 크기와 다를 때의 동작은 정의하지 않는다.
 
 ### 2.2. 범위 밖 접근과 null
-크기가 $\top$인 차원에서 실제 길이 이상의 인덱스에 있는 원소는 null로 취급하고, 연산에 쓰이면 `NullPointerException`을 던진다.
+크기가 길이 변수인 차원에서 실제 길이 이상의 인덱스에 있는 원소는 null로 취급하고, 연산에 쓰이면 `NullPointerException`을 던진다.
 - Java 배열의 범위 밖 접근에서 생기는 `ArrayIndexOutOfBoundsException`, `List`의 `IndexOutOfBoundsException`은 `NullPointerException`으로 보고한다.
 - 시퀀스 자체나 원소(래퍼 타입)가 `null`이어도 `NullPointerException`을 던진다.
 
 ### 2.3. 들쭉날쭉한 배열 (jagged array)
 `double[][]`처럼 안쪽 배열의 길이가 서로 다를 수 있는 경우에도 별도 처리를 하지 않는다.
-- 안쪽 차원의 크기는 $\top$으로 보고 2.2절을 따른다.
+- 안쪽 차원의 크기는 길이 변수 하나로 보고 2.2절을 따른다.
 - 짧은 행의 범위 밖 원소는 null이 되어, 연산에 쓰이면 `NullPointerException`이 발생한다.
 
 ### 2.4. 불변성과 Java 배열
@@ -111,7 +111,7 @@ VEL 값은 불변이다(VEL 타입 시스템 1.5절). 따라서 Java에서 넘�
 - 메서드 `component1()`, …, `componentN()`이 있는 클래스(예: Kotlin의 `Pair`, `Triple`, data class): 각 메서드의 반환 타입
 
 각 성분 타입이 VEL 타입 $C_i \mapsto \langle\mathbb K_i^{\mathbf d_i}\rangle_{R_i}$로 변환되고, 다음을 만족하면 $T$는 배열 타입이다.
-- 모든 성분 대수의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ ($\top$은 VEL 타입 시스템 1.2절을 따른다)
+- 모든 성분 대수의 모양이 같다: $\mathbf d_1 = \cdots = \mathbf d_N = \mathbf d$ (길이 변수는 VEL 타입 시스템 1.2절의 크기 맞추기를 따른다)
 - 모든 성분의 스칼라 대수에 상한이 있다: $\mathbb K = \mathbb K_1 \vee \cdots \vee \mathbb K_N$ (VEL 타입 시스템 3.1절)
 
 $$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup R_N} $$
@@ -126,7 +126,7 @@ $$ T \mapsto \langle\mathbb K^{(N, \mathbf d)}\rangle_{R_1 \sqcup \cdots \sqcup 
 | `record P(double x, double y)` | $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
 | `record Q(int a, double b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Real}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{2}\rangle_{\mathrm{F}64}$ |
 | `record R(@Dim(3) double[] u, @Dim(3) double[] v)` | $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}^{3}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{(2, 3)}\rangle_{\mathrm{F}64}$ |
-| `record S(double[] u, double[] v)` | $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}^{\top}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{(2, \top)}\rangle_{\mathrm{F}64}$ |
+| `record S(double[] u, double[] v)` | $\langle\mathrm{Real}^{\ell_u}\rangle_{\mathrm{F}64}$, $\langle\mathrm{Real}^{\ell_v}\rangle_{\mathrm{F}64}$ | $\langle\mathrm{Real}^{(2, \ell_u)}\rangle_{\mathrm{F}64}$ (길이는 실행 시 판정) |
 | `record B(int a, boolean b)` | $\langle\mathrm{Int}\rangle_{\mathrm{Z}32}$, $\langle\mathrm{Bool}\rangle$ | 배열이 아님 (스칼라 대수의 상한이 없음) |
 
 ## 3. 메소드와 함수형 인터페이스 (Functional Interfaces)

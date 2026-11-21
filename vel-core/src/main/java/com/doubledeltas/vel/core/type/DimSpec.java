@@ -8,12 +8,12 @@ import java.util.List;
  * <p>
  * {@code value} and {@code vel} are in VEL order (rows first), {@code java} in Java declaration order
  * (outermost array first) and is reversed. Exactly one of them may be given; {@code -1}
- * ({@code Dim.TOP}) is ⊤.
+ * ({@code Dim.VAR}) is a dimension of unknown length.
  */
 public final class DimSpec {
 
-    /** {@code Dim.TOP}. */
-    public static final int TOP = -1;
+    /** {@code Dim.VAR}. */
+    public static final int VAR = -1;
 
     private DimSpec() {
     }
@@ -40,11 +40,11 @@ public final class DimSpec {
     }
 
     private static Card card(int size) {
-        if (size == TOP) {
+        if (size == VAR) {
             return Card.TOP;
         }
         if (size < 0) {
-            throw new VelTypeException("@Dim size must be non-negative or Dim.TOP, got " + size);
+            throw new VelTypeException("@Dim size must be non-negative or Dim.VAR, got " + size);
         }
         return Card.of(size);
     }
