@@ -40,8 +40,8 @@ $$ X <: (A \Rightarrow B)$$
 - 곱 $*$과 거듭 곱보다 나중에 묶인다: $\mathrm{Real} * \mathrm{Real} \Rightarrow \mathrm{Real} = (\mathrm{Real} * \mathrm{Real}) \Rightarrow \mathrm{Real}$. 함수를 받는 함수는 괄호로 쓴다: $(\mathrm{Real} \Rightarrow \mathrm{Real}) \Rightarrow \mathrm{Real}$.
 
 **배열**은 스칼라 대수 $\mathbb K$가 정해졌을 때, 1개 이상의 서수에 따라 스칼라 값이 정해지는 함수다. **거듭 곱** $\mathbb K^{\mathbf d}$로 쓴다.
-$$ \mathbb K^{(d_1, d_2, \cdots, d_n)} := \mathrm{CardRng}(d_1) * \mathrm{CardRng}(d_2) * \cdots * \mathrm{CardRng}(d_n) \Rightarrow \mathbb K \quad (d_i : \mathrm{Card})$$
-$\mathrm{CardRng}(d) = [0, d)$는 길이 $d$인 차원의 인덱스 대수다(1.1절). 인덱스가 0부터 시작함에 유의하라. 배열은 함수이므로 인덱스를 인자로 호출할 수 있다(1.6절). 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$.
+$$ \mathbb K^{(d_1, d_2, \cdots, d_n)} := \mathrm{Idx}(d_1) * \mathrm{Idx}(d_2) * \cdots * \mathrm{Idx}(d_n) \Rightarrow \mathbb K \quad (d_i : \mathrm{Card})$$
+$\mathrm{Idx}(d) = [0, d)$는 길이 $d$인 차원의 인덱스 대수다(1.1절). 인덱스가 0부터 시작함에 유의하라. 배열은 함수이므로 인덱스를 인자로 호출할 수 있다(1.6절). 스칼라 대수 $\mathbb K$에 대해서는 후술한다. 거듭 곱은 같은 항목을 곱한 것(1.4.1절)이다: $\mathbb K^{(k, \mathbf d)} = \underbrace{\mathbb K^{\mathbf d} * \cdots * \mathbb K^{\mathbf d}}_{k}$.
 
 **행렬**은 랭크 2의 배열 $\mathbb K^{(m, n)}$이다.
 
@@ -71,12 +71,13 @@ VEL 소스에서는 같은 대수를 `K^n`, `K^(m, n)`, `K^(d₁, …, dₖ)`로
 $$ \mathrm{Card} := 0 \mid \mathbb{N} \mid \top, \qquad 0 < 1 < 2 < \cdots < \top$$
 $\top$은 **무한대** $\aleph_0$이며, VEL에서는 미리 선언된 이름 `inf`로 쓴다.
 
-**서수 범위** $\mathrm{CardRng}(n)$은 서수 $n$보다 작은 서수의 대수다.
-$$ \mathrm{CardRng}(n) := [0, n) = \{\, c : \mathrm{Card} \mid c < n \,\} \quad (n : \mathrm{Card})$$
+**서수 범위** $\mathrm{Idx}(n)$은 서수 $n$보다 작은 서수의 대수다.
+$$ \mathrm{Idx}(n) := [0, n) = \{\, c : \mathrm{Card} \mid c < n \,\} \quad (n : \mathrm{Card})$$
 - 길이 $n$인 차원의 인덱스 대수다. 배열의 정의역은 서수 범위의 곱이다(1장 머리).
-- $\mathrm{CardRng}(\top)$은 유한 서수 전체이고, $\mathrm{Card} = \mathrm{CardRng}(\top) \cup \{\top\}$이다.
-- 포함 관계: $\mathrm{CardRng}(m) <: \mathrm{CardRng}(n) <: \mathrm{Card}$ $(m \le n)$. $\mathrm{CardRng}(0)$은 원소가 없다.
-- $\mathrm{Card}$는 스칼라 대수이고, $\mathrm{CardRng}(n)$은 인자 $n$을 받는 대수 구성자다.
+- $\mathrm{Idx}(\top)$은 유한 서수 전체이고, $\mathrm{Card} = \mathrm{Idx}(\top) \cup \{\top\}$이다.
+- 포함 관계: $\mathrm{Idx}(m) <: \mathrm{Idx}(n) <: \mathrm{Card}$ $(m \le n)$. 모든 $n$에 대해 $\mathrm{Idx}(n)$은 $\mathrm{Card}$의 하위 대수다.
+- $\mathrm{Idx}(0)$은 원소가 없지만 $\mathrm{Not}$과 같지 않다. 빈 배열 $\mathbb K^{(0, \cdots)}$의 인덱스 대수이며, 원소가 없더라도 모양 정보를 가진 대수는 서로 구별한다.
+- $\mathrm{Card}$와 $\mathrm{Idx}(n)$은 모두 스칼라 대수다. $\mathrm{Idx}$는 서수 $n$을 받아 스칼라 대수를 만드는 구성자다.
 - 결과가 서수가 될 수 없는 연산은 **오류**다. 예: $m > n$일 때 $n - m$. 결과가 없으므로 그 식의 대수는 $\mathrm{Not}$과 같이 취급한다(값을 내지 않고 끝난다).
 - 실행 시점의 오류는 `NullPointerException`이다(null 원소를 연산에 쓸 때(1.2절)와 같다). 컴파일 타임에 알 수 있으면 컴파일 오류다.
 
@@ -199,11 +200,11 @@ b[0] = 9      # b = (9, 2, 3), a는 여전히 (1, 2, 3)
 - 첨자의 개수는 배열의 랭크와 같아야 한다. 단, 벡터는 첨자 하나로 긴 쪽 차원을 고르며 방향(열/행)을 유지한다.
 - 리터럴 인덱스가 크기가 정해진 차원의 범위를 벗어나면 컴파일 오류다. 크기가 $\top$인 차원은 1.2절을 따른다.
 
-**배열 호출** `m(i₁, …, iₖ)`: 배열은 $\mathrm{CardRng}(d_1) * \cdots * \mathrm{CardRng}(d_k) \Rightarrow \mathbb K$인 함수이므로(1장 머리) 호출하면 원소 하나를 얻는다.
+**배열 호출** `m(i₁, …, iₖ)`: 배열은 $\mathrm{Idx}(d_1) * \cdots * \mathrm{Idx}(d_k) \Rightarrow \mathbb K$인 함수이므로(1장 머리) 호출하면 원소 하나를 얻는다.
 - 인자는 함수 호출과 같이 하나이며 구조 분해된다. `I = (1, 2)`일 때 `A(I)`, `A((1, 2))`, `A(1, 2)`는 같고, `A[1, 2]`와 같은 값이다.
-- 인자 자리는 인덱스 자리다. $\mathrm{Int}$와 $\mathrm{Card}$ 인자를 $\mathrm{CardRng}(d)$로 좁히며, 범위를 벗어나면 인덱싱과 같이 오류다(리터럴이면 컴파일 오류).
+- 인자 자리는 인덱스 자리다. $\mathrm{Int}$와 $\mathrm{Card}$ 인자를 $\mathrm{Idx}(d)$로 좁히며, 범위를 벗어나면 인덱싱과 같이 오류다(리터럴이면 컴파일 오류).
 - 위치 하나만 고른다. 범위, `:`, `end`, 분할점은 `[…]` 안에서만 쓴다. `A(0:2, 1)`, `A(:, 1)`은 오류다.
-- 부분 적용은 없다. `A(1)`, `A(1)(2)`는 오류다($\mathrm{CardRng}(3) * \mathrm{CardRng}(3) \Rightarrow \mathrm{Int}$는 커링된 함수가 아니다, 1.10절). 행은 `A[1, :]`로 꺼낸다.
+- 부분 적용은 없다. `A(1)`, `A(1)(2)`는 오류다($\mathrm{Idx}(3) * \mathrm{Idx}(3) \Rightarrow \mathrm{Int}$는 커링된 함수가 아니다, 1.10절). 행은 `A[1, :]`로 꺼낸다.
 - 인덱싱 `[…]`은 호출과 맞추지 않는다. 첨자 하나가 벡터인 `A[I]`는 오류다(첨자 개수 = 랭크).
 
 ### 1.7. 분할과 블록 텐서
@@ -299,7 +300,7 @@ abs(x: Real, y: Real, z: Real) => {
 
 **호출할 때 오버로드 고르기** `f(인자)`:
 1. **1단계(엄격)**: 인자 대수가 시그니처에 포함되는($\sqsubseteq$) 오버로드가 후보다. 포함은 스칼라 대수의 위계($\mathrm{Int} <: \mathrm{Real} <: \mathrm{Complex}$, $\mathrm{Not}$은 어디에나 포함), 같거나 매개변수 쪽이 $\top$인 차원 크기, 곱의 항목별 포함으로 정한다. 스칼라는 $1 \times 1$이므로 $\mathbb K^{\top}$ 매개변수에도 들어간다.
-2. **2단계(느슨)**: 1단계 후보가 없을 때만 $\mathrm{Int}$와 $\mathrm{Card}$ 사이의 변환(1.1절), $\mathrm{Int}$·$\mathrm{Card}$를 $\mathrm{CardRng}(n)$으로 좁히기(실행 시 범위 검사, 1.6절), 크기가 $\top$인 인자를 크기가 정해진 매개변수에 넘기기를 허용한다.
+2. **2단계(느슨)**: 1단계 후보가 없을 때만 $\mathrm{Int}$와 $\mathrm{Card}$ 사이의 변환(1.1절), $\mathrm{Int}$·$\mathrm{Card}$를 $\mathrm{Idx}(n)$으로 좁히기(실행 시 범위 검사, 1.6절), 크기가 $\top$인 인자를 크기가 정해진 매개변수에 넘기기를 허용한다.
 3. 후보 중 **가장 구체적인** 하나를 고른다. 시그니처 $S_A \sqsubseteq S_B$이면 $A$가 $B$보다 구체적이다. 다른 모든 후보보다 구체적인 하나가 없으면 모호하다는 오류이며, 시그니처 지정으로 골라야 한다.
 
 ```
@@ -354,7 +355,7 @@ $$ \langle A \Rightarrow B \rangle_{R_A \Rightarrow R_B} = \langle A\rangle_{R_A
 | `double g(DoubleToLongFunction f)` | $(\mathrm{Real} \Rightarrow \mathrm{Int}) \Rightarrow \mathrm{Real}$ | $\langle(\mathrm{Real} \Rightarrow \mathrm{Int}) \Rightarrow \mathrm{Real}\rangle_{(\mathrm{F}64 \Rightarrow \mathrm{Z}64) \Rightarrow \mathrm{F}64}$ |
 | `DoubleFunction<DoubleUnaryOperator>` | $\mathrm{Real} \Rightarrow \mathrm{Real} \Rightarrow \mathrm{Real}$ | $\langle\mathrm{Real} \Rightarrow \mathrm{Real} \Rightarrow \mathrm{Real}\rangle_{\mathrm{F}64}$ |
 
-배열의 정의역인 인덱스 대수 $\mathrm{CardRng}(d_1) * \cdots * \mathrm{CardRng}(d_n)$에는 해상도가 적용되지 않는다. 그래서 **배열의 해상도는 하나**이며 모든 원소에 적용된다. 해상도가 서로 다른 원소로 배열을 만들 때(예: 성분 객체, Java 매핑 2.5절)는 기본으로 원소 중 **가장 큰 해상도**를 고른다. 해상도의 크기는 언어별 구체화 규칙의 $\sqcup$로 정한다(Java 매핑 7.3절).
+배열의 정의역인 인덱스 대수 $\mathrm{Idx}(d_1) * \cdots * \mathrm{Idx}(d_n)$에는 해상도가 적용되지 않는다. 그래서 **배열의 해상도는 하나**이며 모든 원소에 적용된다. 해상도가 서로 다른 원소로 배열을 만들 때(예: 성분 객체, Java 매핑 2.5절)는 기본으로 원소 중 **가장 큰 해상도**를 고른다. 해상도의 크기는 언어별 구체화 규칙의 $\sqcup$로 정한다(Java 매핑 7.3절).
 
 스칼라 대수와 해상도의 조합은 다음으로 제한한다.
 
