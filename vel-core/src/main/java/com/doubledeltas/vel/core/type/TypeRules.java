@@ -117,12 +117,19 @@ public final class TypeRules {
 
     /**
      * Algebra of {@code if c then a else b}. The condition is a Bool scalar; only the chosen branch is
-     * evaluated. The result has the common algebra of the branches: the same shape (⊤ follows
+     * evaluated. The result has the common algebra of the branches: the same shape (sizes follow
      * type-system.md 1.2) and the join of the element algebras.
      */
     public static ArrayAlgebra conditional(ArrayAlgebra condition, ArrayAlgebra then, ArrayAlgebra otherwise) {
         if (!condition.isScalar() || !condition.element().isSubtypeOf(ScalarAlgebra.BOOL)) {
             throw new VelTypeException("condition of if must be a Bool scalar, not " + condition);
+        }
+        // a branch of algebra Not (error()) gives no value: the other branch decides the shape
+        if (then.element() == ScalarAlgebra.NOT && then.isScalar()) {
+            return otherwise;
+        }
+        if (otherwise.element() == ScalarAlgebra.NOT && otherwise.isScalar()) {
+            return then;
         }
         int rank = Math.max(then.rank(), otherwise.rank());
         List<Card> dims = new ArrayList<>(rank);
@@ -257,18 +264,38 @@ public final class TypeRules {
     /**
      * Algebra of a range {@code start:end} = [start, end) (end-exclusive, as in Python): a row vector of
      * Int indices. Both bounds are in index position: cardinals, or Int scalars converted to cardinals.
-     * The length is {@code end - start}, which is ⊥ (null) when {@code end < start}; it is known only
-     * when both bounds are integer constants (and then ⊥ is a compile error), otherwise it is ⊤.
+     * The length is {@code end - start} (type-system.md 1.6), which is ⊥ (null) when {@code end < start}.
+     * It is a natural number when both bounds are integer constants (and then ⊥ is a compile error),
+     * otherwise a fresh length variable. {@link #range(ArrayAlgebra, ArrayAlgebra, Card, Card)} also
+     * knows bounds given as size expressions.
      */
     public static ArrayAlgebra range(ArrayAlgebra start, ArrayAlgebra end) {
+        return range(start, end, null, null);
+    }
+
+    /**
+     * Like {@link #range(ArrayAlgebra, ArrayAlgebra)}, where a bound may also be known as a size
+     * expression ({@code end} and {@code end - 1} in a subscript, type-system.md 1.6); null when not
+     * known. With both bounds known the length is their difference: {@code 1:end} over a dimension of
+     * size {@code ℓ} has length {@code ℓ - 1}.
+     */
+    public static ArrayAlgebra range(ArrayAlgebra start, ArrayAlgebra end, Card startSize, Card endSize) {
         requireCard(start, "range bound");
         requireCard(end, "range bound");
-        Card length = Card.TOP;
-        if (start.constant() instanceof Constant.Int s && end.constant() instanceof Constant.Int e) {
-            length = Card.of(e.value().longValueExact()).minus(Card.of(s.value().longValueExact()))
-                    .requireValid("length of the range " + s + ":" + e);
+        Card s = startSize != null ? startSize : constantSize(start);
+        Card e = endSize != null ? endSize : constantSize(end);
+        Card length = s != null && e != null
+                ? e.minus(s).requireValid("length of the range " + s + ":" + e)
+                : Card.fresh();
+        if (length.isInfinite()) {
+            throw new VelTypeException("a range over an infinite dimension is not supported yet");
         }
         return ArrayAlgebra.mat(Card.ONE, length, ScalarAlgebra.INT);
+    }
+
+    /** The size of an integer constant scalar, or null. A negative constant is ⊥. */
+    private static Card constantSize(ArrayAlgebra a) {
+        return a.constant() instanceof Constant.Int i ? Card.of(i.value().longValueExact()) : null;
     }
 
     /**
@@ -281,7 +308,7 @@ public final class TypeRules {
      *   <li>only the rows (or only the columns) partitioned: {@code Array(k, h, w)}, block {@code i} is {@code T[i, :, :]}</li>
      * </ul>
      * {@code k}, {@code l} are the numbers of row and column blocks and {@code h}, {@code w} the block
-     * sizes (⊤ when the blocks differ in size; the missing positions of smaller blocks are null).
+     * sizes (a fresh length variable when the blocks differ in size; the missing positions of smaller blocks are null).
      */
     public static ArrayAlgebra index(ArrayAlgebra a, List<Subscript> subscripts) {
         List<Selection> sel = selections(a, subscripts);
@@ -328,7 +355,7 @@ public final class TypeRules {
      * must be {@code k}; each target gets the rest, {@code value[i, …]}. This undoes a tuple or a
      * component object: {@code (x, y) = (1, 2)} gives scalars, {@code (u, v) = M} with
      * {@code M : Mat(2, n)} gives {@code Vec(n)} rows, {@code (Top, Bottom) = M[0:3:6, :]} gives blocks.
-     * ⊤ sizes follow type-system.md 1.2.
+     * Sizes follow type-system.md 1.2 (size matching).
      */
     public static ArrayAlgebra destructureTuple(ArrayAlgebra value, int k) {
         String what = "cannot destructure " + value + " into a tuple pattern of " + k + ":";
@@ -355,7 +382,7 @@ public final class TypeRules {
     /**
      * Exact algebras of the blocks of {@code a[s₁, s₂]}, {@code blocks.get(i).get(j)} being block
      * {@code (i, j)}. When the right-hand side of a block destructuring is written as a partitioned
-     * index, the targets get these algebras instead of the common (possibly ⊤) block size of the tensor:
+     * index, the targets get these algebras instead of the common (possibly a length variable) block size of the tensor:
      * in {@code [A, B; C, D] = M[0:2:3, 0:1:3]}, {@code A} is 2x1 and {@code C} is a scalar.
      */
     public static List<List<ArrayAlgebra>> blocks(ArrayAlgebra a, List<Subscript> subscripts) {
@@ -396,7 +423,7 @@ public final class TypeRules {
                     && p.cuts().get(i).constant() instanceof Constant.Int hi) {
                 sizes.add(Card.of(hi.value().subtract(lo.value()).longValueExact()));
             } else {
-                sizes.add(Card.TOP);
+                sizes.add(Card.fresh());
             }
         }
         return sizes;
@@ -440,7 +467,7 @@ public final class TypeRules {
         };
     }
 
-    /** Block size (⊤ unless all blocks are known and equal) and block count of a partition. */
+    /** Block size (a fresh length variable unless all blocks are known and equal) and block count of a partition. */
     private static Selection partition(Card size, Subscript.Partition p) {
         List<BigInteger> cuts = new ArrayList<>();
         for (ArrayAlgebra cut : p.cuts()) {
@@ -449,7 +476,7 @@ public final class TypeRules {
         }
         Card blocks = Card.of(cuts.size() - 1);
         if (cuts.contains(null)) {
-            return new Selection(Card.TOP, blocks);
+            return new Selection(Card.fresh(), blocks);
         }
         for (int i = 1; i < cuts.size(); i++) {
             if (cuts.get(i).compareTo(cuts.get(i - 1)) <= 0) {
@@ -462,7 +489,7 @@ public final class TypeRules {
         BigInteger first = cuts.get(1).subtract(cuts.get(0));
         for (int i = 2; i < cuts.size(); i++) {
             if (!cuts.get(i).subtract(cuts.get(i - 1)).equals(first)) {
-                return new Selection(Card.TOP, blocks); // blocks of different sizes
+                return new Selection(Card.fresh(), blocks); // blocks of different sizes
             }
         }
         return new Selection(Card.of(first.longValueExact()), blocks);

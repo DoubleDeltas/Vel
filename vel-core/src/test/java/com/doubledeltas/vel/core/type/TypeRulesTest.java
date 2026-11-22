@@ -98,7 +98,9 @@ class TypeRulesTest {
         // Card and Int both index; a known negative Int is ⊥ (a compile error)
         ArrayAlgebra v = ArrayAlgebra.vec(n(5), REAL);
         assertTrue(TypeRules.index(v, List.of(Subscript.at(size))).isScalar());
-        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.index(v, List.of(Subscript.span(TypeRules.range(lit(0), size)))));
+        ArrayAlgebra dynamicRange = TypeRules.index(v, List.of(Subscript.span(TypeRules.range(lit(0), size))));
+        assertTrue(dynamicRange.rows() instanceof Card.Expr); // finite, but runtime-sized
+        assertFalse(dynamicRange.cols().isInfinite());
         assertThrows(VelTypeException.class, () -> TypeRules.index(v, List.of(Subscript.at(lit(-1)))));
     }
 
@@ -124,14 +126,24 @@ class TypeRulesTest {
 
     @Test
     void topDimensions() {
-        // ⊤ with n (or ⊤) gives ⊤; known mismatches are compile errors
-        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        // infinity matches infinity, but never a finite size
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
         assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(TOP, REAL)));
         assertThrows(VelTypeException.class,
                 () -> TypeRules.binary(ADD, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(4), REAL)));
-        // a known 1 expands to ⊤, but ⊤ never expands
-        assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, ArrayAlgebra.vec(TOP, REAL), mat(n(1), n(4))));
+        // a known 1 broadcasts to an equal infinite size, but never turns a finite dimension infinite
+        assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, ArrayAlgebra.vec(n(1), REAL), mat(TOP, n(4))));
+        assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD,
+                ArrayAlgebra.vec(TOP, REAL), mat(n(1), n(4)))); // the ⊤-sized vector is 1×∞, so its row expands
+        assertEquals(mat(TOP, TOP), TypeRules.binary(ADD,
+                ArrayAlgebra.vec(TOP, REAL), mat(n(1), TOP)));
         assertEquals(mat(TOP, n(4)), TypeRules.binary(ADD, mat(TOP, n(1)), mat(TOP, n(4))));
+        Card length = Card.fresh();
+        assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.binary(ADD,
+                ArrayAlgebra.vec(length, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertEquals(ArrayAlgebra.vec(length, REAL), TypeRules.binary(ADD,
+                ArrayAlgebra.vec(length, REAL), ArrayAlgebra.vec(length, REAL)));
     }
 
     @Test
@@ -220,7 +232,8 @@ class TypeRulesTest {
     @Test
     void matrixProduct() {
         assertEquals(mat(n(2), n(4)), TypeRules.binary(MUL, mat(n(2), n(3)), mat(n(3), n(4))));
-        assertEquals(mat(n(2), n(4)), TypeRules.binary(MUL, mat(n(2), TOP), mat(n(3), n(4))));
+        assertThrows(VelTypeException.class, () -> TypeRules.binary(MUL, mat(n(2), TOP), mat(n(3), n(4))));
+        assertEquals(mat(n(2), n(4)), TypeRules.binary(MUL, mat(n(2), Card.fresh()), mat(n(3), n(4))));
         assertThrows(VelTypeException.class, () -> TypeRules.binary(MUL, mat(n(2), n(3)), mat(n(2), n(3))));
         // row · column = 1x1
         assertTrue(TypeRules.binary(MUL, mat(n(1), n(3)), ArrayAlgebra.vec(n(3), REAL)).isScalar());
@@ -296,7 +309,8 @@ class TypeRulesTest {
         assertThrows(VelTypeException.class, () -> TypeRules.matrix(List.of(List.of(a, mat(n(0), n(3))))));
         assertEquals(mat(n(2), n(3)), TypeRules.matrix(List.of(List.of(mat(n(0), n(3))), List.of(a))));
         // ⊤ is not known to be 0: no drop, the ordinary rule (1.2) applies
-        assertEquals(mat(TOP, TOP), TypeRules.matrix(List.of(List.of(a, mat(TOP, TOP)))));
+        assertThrows(VelTypeException.class, () -> TypeRules.matrix(List.of(List.of(a, mat(TOP, TOP)))));
+        assertEquals(a, TypeRules.matrix(List.of(List.of(a, mat(Card.fresh(), n(0))))));
         // nothing but 0x0 blocks: K^(0, 0) with K the ∨
         assertEquals(empty, TypeRules.matrix(List.of(List.of(empty, empty))));
         assertEquals(ArrayAlgebra.mat(n(0), n(0), REAL),
@@ -325,7 +339,7 @@ class TypeRulesTest {
         // end < start: the length is ⊥ (null), a compile error when known
         assertThrows(VelTypeException.class, () -> TypeRules.range(lit(3), lit(1)));
         // a non-constant bound (a variable, or end) gives length ⊤
-        assertEquals(ArrayAlgebra.mat(n(1), TOP, INT), TypeRules.range(lit(0), scalar(INT)));
+        assertTrue(TypeRules.range(lit(0), scalar(INT)).cols() instanceof Card.Expr);
         // bounds must be non-negative Int scalars
         assertThrows(VelTypeException.class, () -> TypeRules.range(lit(0), lit("0.1")));
         assertThrows(VelTypeException.class, () -> TypeRules.range(lit(-1), lit(3)));
@@ -349,11 +363,15 @@ class TypeRulesTest {
         assertTrue(TypeRules.index(v, List.of(Subscript.at(lit(4)))).isScalar());
         assertEquals(ArrayAlgebra.vec(n(2), REAL), TypeRules.index(v, List.of(cols)));
         assertEquals(mat(n(1), n(2)), TypeRules.index(TypeRules.transpose(v), List.of(cols)));
-        // a range up to end has length ⊤
-        Subscript toEnd = Subscript.span(TypeRules.range(lit(1), scalar(INT)));
-        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.index(v, List.of(toEnd)));
+        // a range up to end retains its symbolic size; if statically known, the expression folds
+        Card vLength = Card.fresh();
+        ArrayAlgebra symbolicVector = ArrayAlgebra.vec(vLength, REAL);
+        Subscript toEnd = Subscript.span(TypeRules.range(lit(1), scalar(INT), n(1), vLength));
+        assertEquals(vLength.minus(n(1)), TypeRules.index(symbolicVector, List.of(toEnd)).rows());
+        Subscript finiteToEnd = Subscript.span(TypeRules.range(lit(1), scalar(INT), n(1), n(5)));
+        assertEquals(n(4), TypeRules.index(v, List.of(finiteToEnd)).rows());
         // an Int element of another array is a valid index: a[b[i]]
-        ArrayAlgebra bi = TypeRules.index(ArrayAlgebra.vec(TOP, INT), List.of(Subscript.at(scalar(INT))));
+        ArrayAlgebra bi = TypeRules.index(ArrayAlgebra.vec(Card.fresh(), INT), List.of(Subscript.at(scalar(INT))));
         assertTrue(TypeRules.index(v, List.of(Subscript.at(bi))).isScalar());
         // errors: subscript count, index algebra, known out of bounds
         assertThrows(VelTypeException.class, () -> TypeRules.index(m, List.of(row1)));
@@ -387,8 +405,9 @@ class TypeRulesTest {
         assertEquals(scalar(REAL), TypeRules.destructureMatrix(mat(n(2), n(2)), 2, 2));
         // (u, v) = M with M: Mat(2, 3): the rows, as Vec(3) (undoes the stacking of a tuple)
         assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.destructureTuple(mat(n(2), n(3)), 2));
-        // ⊤ sizes are accepted (checked at runtime as usual), known mismatches are errors
-        assertEquals(scalar(REAL), TypeRules.destructureTuple(ArrayAlgebra.vec(TOP, REAL), 3));
+        // runtime-sized finite dimensions are accepted (checked at runtime); infinity is distinct
+        assertEquals(scalar(REAL), TypeRules.destructureTuple(ArrayAlgebra.vec(Card.fresh(), REAL), 3));
+        assertThrows(VelTypeException.class, () -> TypeRules.destructureTuple(ArrayAlgebra.vec(TOP, REAL), 3));
         assertThrows(VelTypeException.class, () -> TypeRules.destructureTuple(ArrayAlgebra.vec(n(2), REAL), 3));
         assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(mat(n(2), n(2)), 4, 1));
     }
@@ -403,7 +422,12 @@ class TypeRulesTest {
         // items must have the same shape; ⊤ follows the usual rule; algebras join
         assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, ArrayAlgebra.vec(n(4), REAL))));
         assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, lit(1))));
-        assertEquals(mat(n(2), TOP), TypeRules.tuple(List.of(u, ArrayAlgebra.vec(TOP, REAL))));
+        assertThrows(VelTypeException.class, () -> TypeRules.tuple(List.of(u, ArrayAlgebra.vec(TOP, REAL))));
+        Card uLength = Card.fresh();
+        ArrayAlgebra stacked = TypeRules.tuple(List.of(ArrayAlgebra.vec(uLength, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertEquals(n(2), stacked.dims().getFirst());
+        assertEquals(2, stacked.rank());
+        assertEquals(n(3), stacked.dims().get(1)); // runtime check result: fewer variables wins
         assertEquals(ArrayAlgebra.vec(n(2), REAL), TypeRules.tuple(List.of(lit(1), scalar(REAL))));
         // stacking then destructuring gives the items back
         assertEquals(u, TypeRules.destructureTuple(TypeRules.tuple(List.of(u, u)), 2));
@@ -416,7 +440,8 @@ class TypeRulesTest {
         Subscript cols013 = Subscript.partition(List.of(lit(0), lit(1), lit(3)));   // [0,1), [1,3)
         // 2x2 blocks of different sizes: block indices first, block sizes ⊤
         ArrayAlgebra t = TypeRules.index(m, List.of(rows023, cols013));
-        assertEquals(ArrayAlgebra.of(INT, n(2), n(2), TOP, TOP), t);
+        assertTrue(t.dims().get(2) instanceof Card.Expr);
+        assertTrue(t.dims().get(3) instanceof Card.Expr);
         // equal blocks keep their size: M6x6[0:2:4:6, 0:3:6] -> Array(3, 2, 2, 3)
         ArrayAlgebra m6 = ArrayAlgebra.mat(n(6), n(6), INT);
         ArrayAlgebra even = TypeRules.index(m6, List.of(
@@ -447,7 +472,7 @@ class TypeRulesTest {
         ArrayAlgebra t = TypeRules.index(m, List.of(
                 Subscript.partition(List.of(lit(0), lit(2), lit(3))),
                 Subscript.partition(List.of(lit(0), lit(1), lit(3)))));
-        assertEquals(ArrayAlgebra.mat(TOP, TOP, INT), TypeRules.destructureMatrix(t, 2, 2));
+        assertEquals(t.dims().subList(2, 4), TypeRules.destructureMatrix(t, 2, 2).dims());
         assertThrows(VelTypeException.class, () -> TypeRules.destructureMatrix(t, 3, 1));
         // with the partition at hand each block gets its exact algebra:
         // A = [1; 4] (2x1), B = [2, 3; 5, 6] (2x2), C = 7 (scalar), D = [8, 9] (1x2)
@@ -472,7 +497,10 @@ class TypeRulesTest {
         assertEquals(scalar(INT), TypeRules.conditional(cond, lit(1), lit(2)));
         // shapes must agree; ⊤ follows the usual rule
         assertEquals(ArrayAlgebra.vec(n(3), REAL), TypeRules.conditional(cond, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(3), REAL)));
-        assertEquals(ArrayAlgebra.vec(TOP, REAL), TypeRules.conditional(cond, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertThrows(VelTypeException.class,
+                () -> TypeRules.conditional(cond, ArrayAlgebra.vec(TOP, REAL), ArrayAlgebra.vec(n(3), REAL)));
+        assertEquals(ArrayAlgebra.vec(n(3), REAL),
+                TypeRules.conditional(cond, ArrayAlgebra.vec(Card.fresh(), REAL), ArrayAlgebra.vec(n(3), REAL)));
         assertThrows(VelTypeException.class,
                 () -> TypeRules.conditional(cond, ArrayAlgebra.vec(n(3), REAL), ArrayAlgebra.vec(n(4), REAL)));
         // the condition is a Bool scalar; Bool and numeric branches don't mix
@@ -524,7 +552,9 @@ class TypeRulesTest {
         assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(new int[] {3, 4}, none, none));   // value = vel
         assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(none, none, new int[] {3, 4}));
         assertEquals(List.of(n(3), n(4)), DimSpec.fromAnnotation(none, new int[] {4, 3}, none));   // java reversed
-        assertEquals(List.of(n(3), TOP), DimSpec.fromAnnotation(none, new int[] {-1, 3}, none));
+        List<Card> unknown = DimSpec.fromAnnotation(none, new int[] {-1, 3}, none);
+        assertEquals(n(3), unknown.getFirst());
+        assertTrue(unknown.get(1) instanceof Card.Expr);
         assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(none, new int[] {4, 3}, new int[] {3, 4}));
         assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(new int[] {3}, none, new int[] {3}));
         assertThrows(VelTypeException.class, () -> DimSpec.fromAnnotation(none, none, none));
@@ -537,7 +567,10 @@ class TypeRulesTest {
     void assignability() {
         assertTrue(ArrayAlgebra.vec(n(3), INT).isAssignableTo(ArrayAlgebra.vec(n(3), REAL)));
         assertFalse(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(n(3), INT)));
-        assertTrue(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(TOP, REAL)));
+        assertFalse(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(TOP, REAL)));
+        Card runtimeSize = Card.fresh();
+        assertTrue(ArrayAlgebra.vec(runtimeSize, REAL).isAssignableTo(ArrayAlgebra.vec(n(3), REAL)));
+        assertFalse(ArrayAlgebra.vec(TOP, REAL).isAssignableTo(ArrayAlgebra.vec(n(3), REAL)));
         assertFalse(ArrayAlgebra.vec(n(3), REAL).isAssignableTo(ArrayAlgebra.vec(n(4), REAL)));
         assertTrue(scalar(REAL).isAssignableTo(scalar(COMPLEX)));
         assertFalse(scalar(COMPLEX).isAssignableTo(scalar(REAL)));

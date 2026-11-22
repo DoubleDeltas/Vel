@@ -110,15 +110,24 @@ public record ArrayAlgebra(List<Card> dims, ScalarAlgebra element, Constant cons
         return new ArrayAlgebra(newDims, element);
     }
 
-    /** Assignability: same shape (⊤ matches any size) and a subtype element algebra. */
+    /**
+     * Inclusion {@code this ⊑ target} (type-system.md 1.2): the same sizes (equal size expressions) and
+     * a subtype element algebra. Sizes are not contravariant: {@code Real^5} is not in {@code Real^3}.
+     */
+    public boolean isSubalgebraOf(ArrayAlgebra target) {
+        return dims.equals(target.dims) && element.isSubtypeOf(target.element);
+    }
+
+    /**
+     * Assignability: sizes that can agree ({@link Shapes#compatible}: equal, or decided by a runtime
+     * check, never infinite with finite) and a subtype element algebra.
+     */
     public boolean isAssignableTo(ArrayAlgebra target) {
         if (rank() != target.rank()) {
             return false;
         }
         for (int i = 0; i < rank(); i++) {
-            Card a = dims.get(i);
-            Card b = target.dims.get(i);
-            if (a.isKnown() && b.isKnown() && !a.equals(b)) {
+            if (!Shapes.compatible(dims.get(i), target.dims.get(i))) {
                 return false;
             }
         }

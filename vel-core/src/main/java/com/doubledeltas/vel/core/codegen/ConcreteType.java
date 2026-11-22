@@ -47,7 +47,7 @@ public record ConcreteType(List<Card> dims, ScalarType element, String represent
     public static ConcreteType javaArray(ScalarType element, int javaRank, List<Card> velDims) {
         List<Card> dims = velDims;
         if (dims == null) {
-            dims = java.util.Collections.nCopies(javaRank, Card.TOP);
+            dims = java.util.stream.Stream.generate(Card::fresh).limit(javaRank).toList();
         }
         if (dims.size() != javaRank) {
             throw new IllegalArgumentException("@Dim gives " + dims.size() + " sizes for an array of " + javaRank + " levels");

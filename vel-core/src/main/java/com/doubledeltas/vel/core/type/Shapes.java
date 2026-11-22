@@ -3,24 +3,41 @@ package com.doubledeltas.vel.core.type;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Shape rules: ⊤ dimensions, broadcasting, matrix product, transposition, concatenation (type-system.md 1.2–1.4). */
+/** Shape rules: size matching, broadcasting, matrix product, transposition, concatenation (type-system.md 1.2–1.4). */
 public final class Shapes {
 
     private Shapes() {
     }
 
     /**
-     * Two sizes that must agree (no broadcasting). Equal sizes stay; ⊤ on either side gives ⊤
-     * (a mismatch shows up at runtime as a NullPointerException); known different sizes are an error.
+     * Two sizes that must agree (no broadcasting), type-system.md 1.2 "크기 맞추기". Equal sizes (the
+     * same size expression, or both ⊤) stay. Different natural numbers, and ⊤ with a finite size, are
+     * compile errors. Other different size expressions are decided at runtime (a mismatch shows up as
+     * a NullPointerException); the result is the one with fewer length variables, the left one on a tie.
      */
     public static Card unify(Card a, Card b, String what) {
+        a.requireValid(what);
+        b.requireValid(what);
         if (a.equals(b)) {
             return a;
         }
-        if (!a.isKnown() || !b.isKnown()) {
-            return Card.TOP;
+        if (a.isInfinite() || b.isInfinite()) {
+            throw new VelTypeException(what + " mismatch: " + a + " vs " + b + " (an infinite and a finite size)");
         }
-        throw new VelTypeException(what + " mismatch: " + a + " vs " + b);
+        if (a.isKnown() && b.isKnown()) {
+            throw new VelTypeException(what + " mismatch: " + a + " vs " + b);
+        }
+        return b.variables() < a.variables() ? b : a;
+    }
+
+    /** Whether two sizes can agree: {@link #unify} succeeds (at compile time, or by a runtime check). */
+    public static boolean compatible(Card a, Card b) {
+        try {
+            unify(a, b, "size");
+            return true;
+        } catch (VelTypeException e) {
+            return false;
+        }
     }
 
     /** One dimension of an element-wise operation: a size known to be 1 expands to the other size. */

@@ -252,17 +252,17 @@ class VelIrGenerationExtension : IrGenerationExtension {
                 return if (nested && type.isMarkedNullable()) Boundary.Boxed(scalar, representation ?: JavaTypes.javaName(scalar.resolution()))
                 else Boundary.Direct(listOf(), scalar, representation)
             }
-            PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it, representation) }
+            PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.fresh()), it, representation) }
             val arguments = (type as? IrSimpleType)?.arguments ?: emptyList()
             if (name == "kotlin.Array") {
                 val element = arguments.singleOrNull()?.typeOrNull ?: return null
                 val inner = boundaryOf(element, nested = true) ?: return null
-                if (inner is Boundary.Direct && inner.rank() > 0) return Boundary.Direct(inner.dims() + Card.TOP, inner.element(), inner.representation())
-                return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, name)
+                if (inner is Boundary.Direct && inner.rank() > 0) return Boundary.Direct(inner.dims() + Card.fresh(), inner.element(), inner.representation())
+                return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.fresh(), name)
             }
             if (name in LISTS) {
                 val element = arguments.singleOrNull()?.typeOrNull ?: return null
-                return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element, nested = true) ?: return null, Card.TOP, name)
+                return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element, nested = true) ?: return null, Card.fresh(), name)
             }
             val cls = type.classOrNull?.owner ?: return null
             val functions = cls.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrSimpleFunction>()

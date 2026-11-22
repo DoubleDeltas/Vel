@@ -78,7 +78,7 @@ public final class JavaBoundary {
                 for (int k = d.rank() - 1; k >= 0; k--) {
                     loops[k] = fresh("i");
                     String n = d.dims().get(k) instanceof Card.Finite f ? String.valueOf(f.size())
-                            : source + "[0]".repeat(d.rank() - 1 - k) + ".length";
+                            : directLength(source, d.rank() - 1 - k);
                     line("for (int " + loops[k] + " = 0; " + loops[k] + " < " + n + "; " + loops[k] + "++) {");
                     indent++;
                     idx[offset + k] = loops[k];
@@ -119,7 +119,7 @@ public final class JavaBoundary {
     private static String length(Boundary b, String source, int k) {
         return switch (b) {
             case Boundary.Direct d -> d.dims().get(k) instanceof Card.Finite f ? String.valueOf(f.size())
-                    : source + "[0]".repeat(d.rank() - 1 - k) + ".length";
+                    : directLength(source, d.rank() - 1 - k);
             case Boundary.Boxed ignored -> "1";
             case Boundary.Sequence s -> {
                 int inner = s.of().dims().size();
@@ -237,6 +237,20 @@ public final class JavaBoundary {
         }
     }
 
+    /**
+     * Read an inner Java-array length without indexing an empty outer array. Java does not retain the
+     * allocated inner length when the outer length is zero, so the VEL abstraction uses 0 in that case
+     * (type-system.md / java.md 2.3): {@code a.length == 0 ? 0 : a[0].length}.
+     */
+    private static String directLength(String array, int depth) {
+        if (depth == 0) {
+            return array + ".length";
+        }
+        String first = array + "[0]";
+        String inner = directLength(first, depth - 1);
+        return "(" + array + ".length == 0 ? 0 : " + inner + ")";
+    }
+
     /** The length of VEL dimension {@code k} of the generated value {@code v}. */
     private static String lengthOfValue(String v, ConcreteType t, int k) {
         List<Card> dims = t.dims();
@@ -246,7 +260,7 @@ public final class JavaBoundary {
         if (dims.get(k) instanceof Card.Finite f) {
             return String.valueOf(f.size());
         }
-        return v + "[0]".repeat(t.javaRank() - 1 - k) + ".length";
+        return directLength(v, t.javaRank() - 1 - k);
     }
 
     // ------------------------------------------------------------------------------------------

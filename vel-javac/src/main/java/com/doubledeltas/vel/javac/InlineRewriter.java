@@ -395,7 +395,7 @@ final class InlineRewriter extends TreeTranslator {
         if (scalar == null) {
             return null; // void
         }
-        return new Boundary.Direct(java.util.Collections.nCopies(rank, Card.TOP), scalar);
+        return new Boundary.Direct(java.util.stream.Stream.generate(Card::fresh).limit(rank).toList(), scalar);
     }
 
     /** The boundary of a type attributed on a copy in the enclosing class environment; null when unsupported. */

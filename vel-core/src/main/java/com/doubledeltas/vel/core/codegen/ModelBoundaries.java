@@ -71,11 +71,11 @@ public final class ModelBoundaries {
                 rank++;
             }
             if (t.getKind().isPrimitive()) {
-                List<Card> dims = new ArrayList<>(java.util.Collections.nCopies(rank, Card.TOP));
+                List<Card> dims = new ArrayList<>(java.util.stream.Stream.generate(Card::fresh).limit(rank).toList());
                 return new Boundary.Direct(dims, scalar(t.toString()));
             }
             Boundary element = of(((ArrayType) type).getComponentType());
-            return new Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, element, Card.TOP, type.toString());
+            return new Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, element, Card.fresh(), type.toString());
         }
         if (kind == TypeKind.DECLARED) {
             DeclaredType declared = (DeclaredType) type;
@@ -90,7 +90,7 @@ public final class ModelBoundaries {
                     throw new VelTypeException("the list type " + type + " needs its element type");
                 }
                 return new Boundary.Sequence(Boundary.Sequence.Kind.LIST, of(declared.getTypeArguments().getFirst()),
-                        Card.TOP, type.toString());
+                        Card.fresh(), type.toString());
             }
             if (element.getKind() == ElementKind.RECORD) {
                 List<Boundary.Part> parts = new ArrayList<>();

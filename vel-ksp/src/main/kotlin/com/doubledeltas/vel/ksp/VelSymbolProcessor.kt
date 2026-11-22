@@ -202,19 +202,19 @@ class VelSymbolProcessor(
             return if (type.isMarkedNullable) Boundary.Boxed(scalar, representation ?: JavaTypes.javaName(scalar.resolution()))
             else Boundary.Direct(listOf(), scalar, representation)
         }
-        PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.TOP), it, representation) }
+        PRIMITIVE_ARRAYS[name]?.let { return Boundary.Direct(listOf(Card.fresh()), it, representation) }
         if (name == "kotlin.Array") {
             val element = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
             val inner = boundaryOf(element)
             // Array<DoubleArray> is a primitive array of rank 2; Array<Double> holds boxed values
             if (inner is Boundary.Direct && inner.rank() > 0) { // nullable rows are cast (null throws when read)
-                return Boundary.Direct(inner.dims() + Card.TOP, inner.element(), inner.representation())
+                return Boundary.Direct(inner.dims() + Card.fresh(), inner.element(), inner.representation())
             }
-            return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.TOP, render(type.makeNotNullable()))
+            return Boundary.Sequence(Boundary.Sequence.Kind.ARRAY, inner, Card.fresh(), render(type.makeNotNullable()))
         }
         if (name in LISTS) {
             val element = type.arguments.single().type?.resolve() ?: throw VelTypeException("unsupported type $type")
-            return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element), Card.TOP, render(type.makeNotNullable()))
+            return Boundary.Sequence(Boundary.Sequence.Kind.LIST, boundaryOf(element), Card.fresh(), render(type.makeNotNullable()))
         }
         val declaration = type.declaration as? KSClassDeclaration
         if (declaration != null) {

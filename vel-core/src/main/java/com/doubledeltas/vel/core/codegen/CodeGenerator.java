@@ -272,7 +272,7 @@ public final class CodeGenerator {
         out.add(new Return(arrayCode(array, target.resolution(), returnType.primitive(), true)));
     }
 
-    /** Known sizes must match; ⊤ matches anything. */
+    /** Shape check. Runtime-dependent equalities are checked by the generated element accesses (null/NPE). */
     private static void checkShape(List<Card> from, List<Card> to, String what) {
         if (from.size() != to.size()) {
             throw new VelTypeException(what + " the shapes differ");
@@ -1037,7 +1037,9 @@ public final class CodeGenerator {
                     }
                     Val from = expr(range.expr(0));
                     Val to = expr(range.expr(1));
-                    ArrayAlgebra span = TypeRules.range(from.alg(), to.alg());
+                    Card dimSize = a.alg().dims().get(k);
+                    ArrayAlgebra span = TypeRules.range(from.alg(), to.alg(),
+                            boundSize(range.expr(0), dimSize), boundSize(range.expr(1), dimSize));
                     subscripts.add(Subscript.span(span));
                     start[k] = temp(conv(from, Resolution.INT32));
                     length[k] = span.cols().isKnown() ? intLit(((Card.Finite) span.cols()).size())
@@ -1057,6 +1059,34 @@ public final class CodeGenerator {
             }
         }
         return new Selection(subscripts, fixed, start, length);
+    }
+
+    /**
+     * The size expression of a range bound written as {@code end}, {@code end + n} or {@code end - n}
+     * (n an integer literal) in a subscript over a dimension of size {@code dimSize}: {@code dimSize ± n}
+     * (type-system.md 1.6). Null for any other bound (an integer constant is known from its algebra).
+     */
+    private Card boundSize(VelParser.ExprContext bound, Card dimSize) {
+        if (isEnd(bound)) {
+            return dimSize;
+        }
+        if (bound instanceof VelParser.AddExprContext add && isEnd(add.expr(0))
+                && add.expr(1) instanceof VelParser.PrimaryExprContext p
+                && p.primary() instanceof VelParser.NumberLiteralContext n
+                && number(n.getText()) instanceof Constant.Int i) {
+            Card offset = Card.of(i.value().longValueExact());
+            return switch (add.op.getText()) {
+                case "+" -> dimSize.plus(offset);
+                case "-" -> dimSize.minus(offset);
+                default -> null;
+            };
+        }
+        return null;
+    }
+
+    private boolean isEnd(VelParser.ExprContext e) {
+        return e instanceof VelParser.PrimaryExprContext p && p.primary() instanceof VelParser.IdentifierContext id
+                && id.getText().equals("end") && !locals.containsKey("end");
     }
 
     /** The index into {@code a} for position {@code idx} of the selected region. */

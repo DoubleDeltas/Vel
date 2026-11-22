@@ -41,7 +41,7 @@ public final class DimSpec {
 
     private static Card card(int size) {
         if (size == VAR) {
-            return Card.TOP;
+            return Card.fresh();
         }
         if (size < 0) {
             throw new VelTypeException("@Dim size must be non-negative or Dim.VAR, got " + size);
