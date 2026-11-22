@@ -166,7 +166,7 @@ public final class Code {
     // Statements
     // ------------------------------------------------------------------------------------------
 
-    public sealed interface Stmt permits Let, Var, Declare, Assign, Store, For, If, Return, Throw {
+    public sealed interface Stmt permits Let, Var, Declare, Assign, Store, For, If, CheckSize, Return, Throw {
     }
 
     /** An immutable local initialized once. */
@@ -193,6 +193,10 @@ public final class Code {
     }
 
     public record If(Expr condition, List<Stmt> then, List<Stmt> otherwise) implements Stmt {
+    }
+
+    /** A runtime dimension equality assertion; a mismatch becomes a VEL null-element error (NPE). */
+    public record CheckSize(Expr left, Expr right) implements Stmt {
     }
 
     /** Ends the computation with its result (a method's {@code return}, an inline expression's value). */

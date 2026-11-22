@@ -230,6 +230,18 @@ class JavaCodeGeneratorTest {
         // ⊤ sizes: the shorter operand runs out of elements, which are null (java.md 2.2)
         assertThrows(NullPointerException.class, () -> run("u + v", "double[](u double[]; v double[])",
                 new double[] {1, 2, 3}, new double[] {1, 2}));
+        // Tuple stacking cannot silently truncate to the first item's length.
+        assertThrows(NullPointerException.class, () -> run("(u, v)", "double[][](u double[]; v double[])",
+                new double[] {1, 2, 3}, new double[] {4, 5}));
+        // Concatenation row widths must agree even if later rows are shorter.
+        assertThrows(NullPointerException.class, () -> run("[A; B]", "double[][](A double[][]; B double[][])",
+                new double[][] {{1, 2}, {3, 4}}, new double[][] {{5, 6, 7}}));
+        assertThrows(NullPointerException.class, () -> run("[A, B; C, D]", "double[][](A double[][]; B double[][]; C double[][]; D double[][])",
+                new double[][] {{1}, {2}}, new double[][] {{3}, {4}},
+                new double[][] {{5, 6, 7}}, new double[][] {{8, 9, 10}}));
+        // A matrix-product inner dimension is checked before the dot-product loop.
+        assertThrows(NullPointerException.class, () -> run("A * B", "double[][](A double[][]; B double[][])",
+                new double[][] {{1, 2}, {3, 4}}, new double[][] {{5}, {6}, {7}}));
     }
 
     @Test

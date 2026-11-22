@@ -9,6 +9,7 @@ import com.doubledeltas.vel.core.codegen.Code.Binary;
 import com.doubledeltas.vel.core.codegen.Code.Body;
 import com.doubledeltas.vel.core.codegen.Code.Call;
 import com.doubledeltas.vel.core.codegen.Code.Choose;
+import com.doubledeltas.vel.core.codegen.Code.CheckSize;
 import com.doubledeltas.vel.core.codegen.Code.Convert;
 import com.doubledeltas.vel.core.codegen.Code.Declare;
 import com.doubledeltas.vel.core.codegen.Code.Expr;
@@ -136,6 +137,8 @@ public final class JavaPrinter {
                     block(i.otherwise());
                 }
             }
+            case CheckSize c -> line("if (" + expr(c.left()) + " != " + expr(c.right())
+                    + ") throw new NullPointerException(\"VEL: shape mismatch\");");
             case Return r -> {
                 if (result == null) {
                     line(returnKeyword + " " + expr(r.value()) + ";");

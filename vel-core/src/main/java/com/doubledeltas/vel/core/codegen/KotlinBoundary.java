@@ -77,7 +77,7 @@ public final class KotlinBoundary {
                 for (int k = d.rank() - 1; k >= 0; k--) {
                     loops[k] = fresh("i");
                     String n = d.dims().get(k) instanceof Card.Finite f ? String.valueOf(f.size())
-                            : source + "[0]".repeat(d.rank() - 1 - k) + ".size";
+                            : directLength(source, d.rank() - 1 - k);
                     line("for (" + loops[k] + " in 0 until " + n + ") {");
                     indent++;
                     idx[offset + k] = loops[k];
@@ -113,10 +113,19 @@ public final class KotlinBoundary {
         }
     }
 
+    /** Read an inner Kotlin-array length without indexing an empty outer array; absent inner length is 0. */
+    private static String directLength(String array, int depth) {
+        if (depth == 0) {
+            return array + ".size";
+        }
+        String inner = directLength(array + "[0]", depth - 1);
+        return "(if (" + array + ".size == 0) 0 else " + inner + ")";
+    }
+
     private static String length(Boundary b, String source, int k) {
         return switch (b) {
             case Boundary.Direct d -> d.dims().get(k) instanceof Card.Finite f ? String.valueOf(f.size())
-                    : source + "[0]".repeat(d.rank() - 1 - k) + ".size";
+                    : directLength(source, d.rank() - 1 - k);
             case Boundary.Boxed ignored -> "1";
             case Boundary.Sequence s -> {
                 int inner = s.of().dims().size();
@@ -227,7 +236,7 @@ public final class KotlinBoundary {
         if (dims.get(k) instanceof Card.Finite f) {
             return String.valueOf(f.size());
         }
-        return v + "[0]".repeat(t.javaRank() - 1 - k) + ".size";
+        return directLength(v, t.javaRank() - 1 - k);
     }
 
     // ------------------------------------------------------------------------------------------

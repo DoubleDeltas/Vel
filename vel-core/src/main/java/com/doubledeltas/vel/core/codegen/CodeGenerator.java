@@ -23,6 +23,7 @@ import com.doubledeltas.vel.core.codegen.Code.Assign;
 import com.doubledeltas.vel.core.codegen.Code.Binary;
 import com.doubledeltas.vel.core.codegen.Code.Body;
 import com.doubledeltas.vel.core.codegen.Code.Call;
+import com.doubledeltas.vel.core.codegen.Code.CheckSize;
 import com.doubledeltas.vel.core.codegen.Code.Choose;
 import com.doubledeltas.vel.core.codegen.Code.Convert;
 import com.doubledeltas.vel.core.codegen.Code.Declare;
@@ -263,7 +264,7 @@ public final class CodeGenerator {
             out.add(new Return(convTo(v, returnType.primitive())));
             return;
         }
-        checkShape(v.alg().dims(), returnType.dims(), "cannot return " + v.alg() + " as " + returnType + ":");
+        checkShape(v, returnType.dims(), "cannot return " + v.alg() + " as " + returnType + ":");
         if (!v.isScalar() && JavaTypes.javaRank(v.alg().dims()) != returnType.javaRank()) {
             throw new VelTypeException("cannot return " + v.alg() + " as " + returnType
                     + ": the orientation differs (a row and a column?); transpose it with '");
@@ -272,13 +273,62 @@ public final class CodeGenerator {
         out.add(new Return(arrayCode(array, target.resolution(), returnType.primitive(), true)));
     }
 
-    /** Shape check. Runtime-dependent equalities are checked by the generated element accesses (null/NPE). */
-    private static void checkShape(List<Card> from, List<Card> to, String what) {
-        if (from.size() != to.size()) {
+    /** Shape check and explicit runtime equality checks for distinct symbolic sizes. */
+    private void checkShape(Val from, List<Card> to, String what) {
+        if (from.alg().rank() != to.size()) {
             throw new VelTypeException(what + " the shapes differ");
         }
-        for (int i = 0; i < from.size(); i++) {
-            Shapes.unify(from.get(i), to.get(i), what);
+        for (int i = 0; i < to.size(); i++) {
+            Card a = from.alg().dims().get(i);
+            Card b = to.get(i);
+            Shapes.unify(a, b, what);
+            // A finite target size is an explicit contract (@Dim or the declared result shape).
+            // A symbolic target size is unconstrained here; its fresh variable is not a shared contract.
+            if (b instanceof Card.Finite && a instanceof Card.Expr) {
+                guarded = true;
+                out.add(new CheckSize(temp(lengthOf(from, i)), intLit(((Card.Finite) b).size())));
+            }
+        }
+    }
+
+    /** Runtime-check one pair of dimensions when their distinct finite size expressions may agree. */
+    private void checkDimension(Val left, int leftDim, Val right, int rightDim, String what) {
+        checkSize(left.alg().dims().get(leftDim), temp(lengthOf(left, leftDim)),
+                right.alg().dims().get(rightDim), temp(lengthOf(right, rightDim)), what);
+    }
+
+    private void checkSize(Card a, Expr lengthA, Card b, Expr lengthB, String what) {
+        Shapes.unify(a, b, what);
+        if (!a.equals(b) && a.isFinite() && b.isFinite()) {
+            guarded = true;
+            out.add(new CheckSize(lengthA, lengthB));
+        }
+    }
+
+    private void checkSameShape(Val left, Val right, String what) {
+        if (left.alg().rank() != right.alg().rank()) {
+            throw new VelTypeException(what + " the shapes differ");
+        }
+        for (int i = 0; i < left.alg().rank(); i++) {
+            checkDimension(left, i, right, i, what);
+        }
+    }
+
+    /** Check dimensions participating in broadcasting; a statically-one side is expanded, not compared. */
+    private void checkBroadcastShape(Val left, Val right, String what) {
+        int rank = Math.max(left.alg().rank(), right.alg().rank());
+        for (int i = 0; i < rank; i++) {
+            boolean hasA = i < left.alg().rank();
+            boolean hasB = i < right.alg().rank();
+            Card a = hasA ? left.alg().dims().get(i) : Card.ONE;
+            Card b = hasB ? right.alg().dims().get(i) : Card.ONE;
+            if (a.isOne() || b.isOne()) {
+                continue;
+            }
+            if (!hasA || !hasB) {
+                throw new VelTypeException(what + " the shapes differ: " + left.alg() + " and " + right.alg());
+            }
+            checkDimension(left, i, right, i, what);
         }
     }
 
@@ -623,7 +673,7 @@ public final class CodeGenerator {
             if (!widens(a, p)) {
                 throw new VelTypeException("cannot pass " + a.res() + " as " + p + " to " + what + " without losing values");
             }
-            checkShape(a.alg().dims(), p.dims(), "cannot pass " + a.alg() + " as " + p + " to " + what + ":");
+            checkShape(a, p.dims(), "cannot pass " + a.alg() + " as " + p + " to " + what + ":");
             if (JavaTypes.javaRank(a.alg().dims()) != p.javaRank()) {
                 throw new VelTypeException("cannot pass " + a.alg() + " as " + p + " to " + what
                         + ": the orientation differs (a row and a column?); transpose it with '");
@@ -691,6 +741,9 @@ public final class CodeGenerator {
                 || ((op == BinaryOperator.DIV || op == BinaryOperator.RIGHT_DIV) && b.isScalar())
                 || (op == BinaryOperator.LEFT_DIV && a.isScalar());
         if (elementWise) {
+            if (!a.isScalar() && !b.isScalar()) {
+                checkBroadcastShape(a, b, "cannot broadcast " + a.alg() + " and " + b.alg() + ":");
+            }
             Resolution res = elementResolution(arithmetic, x, y, alg.element());
             return elementWise(alg, res, List.of(x, y),
                     e -> scalarArithmetic(arithmetic, e.get(0), e.get(1), ArrayAlgebra.scalar(alg.element())).code());
@@ -788,6 +841,9 @@ public final class CodeGenerator {
             throw new VelTypeException("operator " + symbol + " is not defined for " + k);
         }
         ArrayAlgebra alg = new ArrayAlgebra(Shapes.broadcast(a.alg().dims(), b.alg().dims()), ScalarAlgebra.BOOL);
+        if (!a.isScalar() && !b.isScalar()) {
+            checkBroadcastShape(a, b, "cannot broadcast " + a.alg() + " and " + b.alg() + ":");
+        }
         Function<List<Val>, Expr> element = e -> {
             Val x = e.get(0);
             Val y = e.get(1);
@@ -814,6 +870,9 @@ public final class CodeGenerator {
         ArrayAlgebra alg = TypeRules.conditional(condition.alg(), a.alg(), b.alg());
         if (alg.element() == ScalarAlgebra.NOT) {
             return new Val(alg, null, null, false);
+        }
+        if (!a.isNot() && !b.isNot() && !a.isScalar() && !b.isScalar()) {
+            checkSameShape(a, b, "branches of if have different shapes:");
         }
         Resolution r = normalize(alg.element(), a.isNot() ? resolve(b) : b.isNot() ? resolve(a)
                 : Promotion.join(elementOperand(a), elementOperand(b)));
@@ -867,6 +926,7 @@ public final class CodeGenerator {
         }
         Resolution r = elementResolution(Arithmetic.MUL, a, b, alg.element());
         Type t = Type.scalar(JavaTypes.javaName(r));
+        checkDimension(a, 1, b, 0, "inner dimension of matrix product");
         Expr rows = lengthOf(a, 0);
         Expr inner = lengthOf(a, 1);
         Expr cols = lengthOf(b, 1);
@@ -920,6 +980,13 @@ public final class CodeGenerator {
         if (alg.isScalar()) {
             return scalarVal(alg.element(), r, conv(all.getFirst(), r));
         }
+        // Blocks on the same row must have equal heights (horizontal concatenation).
+        for (List<Val> row : rows) {
+            Val first = row.getFirst();
+            for (Val block : row.subList(1, row.size())) {
+                checkDimension(first, 0, block, 0, "rows of horizontal concatenation");
+            }
+        }
         List<Expr> heights = new ArrayList<>();
         for (List<Val> row : rows) {
             heights.add(temp(lengthOf(row.getFirst(), 0)));
@@ -932,8 +999,14 @@ public final class CodeGenerator {
             }
             widths.add(w);
         }
+        Expr referenceWidth = widths.getFirst().stream().reduce(CodeGenerator::plus).orElseThrow();
+        for (int i = 1; i < widths.size(); i++) {
+            Expr rowWidth = widths.get(i).stream().reduce(CodeGenerator::plus).orElseThrow();
+            guarded = true;
+            out.add(new CheckSize(referenceWidth, rowWidth));
+        }
         Expr totalRows = heights.stream().reduce(CodeGenerator::plus).orElseThrow();
-        Expr totalCols = widths.getFirst().stream().reduce(CodeGenerator::plus).orElseThrow();
+        Expr totalCols = referenceWidth;
         Val result = allocate(alg, r, List.of(totalRows, totalCols));
         Expr rowOffset = intLit(0);
         for (int i = 0; i < rows.size(); i++) {
@@ -959,6 +1032,17 @@ public final class CodeGenerator {
         List<Expr> lengths = new ArrayList<>();
         lengths.add(intLit(items.size()));
         Val first = items.getFirst();
+        for (int i = 1; i < items.size(); i++) {
+            Val item = items.get(i);
+            int rank = Math.max(first.alg().rank(), item.alg().rank());
+            for (int k = 0; k < rank; k++) {
+                Card a = k < first.alg().rank() ? first.alg().dims().get(k) : Card.ONE;
+                Card b = k < item.alg().rank() ? item.alg().dims().get(k) : Card.ONE;
+                Expr lenA = k < first.alg().rank() ? lengthOf(first, k) : intLit(1);
+                Expr lenB = k < item.alg().rank() ? lengthOf(item, k) : intLit(1);
+                checkSize(a, lenA, b, lenB, "items of a tuple have different shapes:");
+            }
+        }
         for (int k = 0; k < alg.rank() - 1; k++) {
             lengths.add(k < first.alg().rank() ? lengthOf(first, k) : intLit(1));
         }

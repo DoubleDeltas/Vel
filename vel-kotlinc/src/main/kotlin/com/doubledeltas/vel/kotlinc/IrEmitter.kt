@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irInt
 import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irNotEquals
+import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irSet
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTrue
@@ -162,6 +163,16 @@ internal class IrEmitter(
                 +(if (s.otherwise().isEmpty()) irIfThen(builtIns.unitType, expr(s.condition()), then)
                 else irIfThenElse(builtIns.unitType, expr(s.condition()), then,
                     irBlock(resultType = builtIns.unitType) { statements(s.otherwise()) }))
+            }
+            is Code.CheckSize -> {
+                val equal = irEquals(expr(s.left()), expr(s.right()))
+                val mismatch = irCallConstructor(
+                    finder.findConstructors(ClassId(FqName("kotlin"), Name.identifier("NullPointerException"))).single {
+                        it.owner.parameters.size == 1
+                    }, emptyList()
+                ).apply { arguments[0] = irString("VEL: shape mismatch") }
+                +irIfThen(builtIns.unitType, irNotEquals(equal, irTrue()),
+                    IrThrowImpl(start, end, builtIns.nothingType, mismatch))
             }
             is Code.Return -> +expr(s.value())
             is Code.Throw -> +throwVelException()
